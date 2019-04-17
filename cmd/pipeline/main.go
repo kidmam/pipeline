@@ -25,7 +25,16 @@ import (
 
 	"github.com/jinzhu/gorm"
 
+	"github.com/banzaicloud/pipeline/internal/clustergroup"
+
 	evbus "github.com/asaskevich/EventBus"
+	"github.com/gin-contrib/cors"
+	"github.com/gin-gonic/gin"
+	"github.com/goph/emperror"
+	"github.com/prometheus/client_golang/prometheus"
+	"github.com/sirupsen/logrus"
+	"github.com/spf13/viper"
+
 	ginprometheus "github.com/banzaicloud/go-gin-prometheus"
 	"github.com/banzaicloud/pipeline/api"
 	"github.com/banzaicloud/pipeline/api/ark/backups"
@@ -66,12 +75,6 @@ import (
 	"github.com/banzaicloud/pipeline/secret"
 	"github.com/banzaicloud/pipeline/spotguide"
 	"github.com/banzaicloud/pipeline/spotguide/scm"
-	"github.com/gin-contrib/cors"
-	"github.com/gin-gonic/gin"
-	"github.com/goph/emperror"
-	"github.com/prometheus/client_golang/prometheus"
-	"github.com/sirupsen/logrus"
-	"github.com/spf13/viper"
 )
 
 //Common logger for package
@@ -258,6 +261,9 @@ func main() {
 		),
 	}
 	clusterAPI := api.NewClusterAPI(clusterManager, clusterGetter, workflowClient, log, errorHandler, externalBaseURL, clusterCreators, clusterDeleters)
+
+	clusterGroupManager := clustergroup.NewManager(clusterManager, db, log, errorHandler)
+	clusterGroupApi := api.NewClusterGroupAPI(clusterManager, clusterGroupManager, db, log, errorHandler)
 
 	nplsApi := api.NewNodepoolManagerAPI(clusterGetter, log, errorHandler)
 
