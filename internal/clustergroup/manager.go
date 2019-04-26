@@ -62,7 +62,7 @@ func (g *Manager) FindOne(cg ClusterGroupModel) (*ClusterGroupModel, error) {
 	var result ClusterGroupModel
 	err := g.db.Where(cg).Preload("Members").First(&result).Error
 	if gorm.IsRecordNotFoundError(err) {
-		return nil, errors.WithStack(errors.New("cluster group not found"))
+		return nil, nil
 	}
 	if err != nil {
 		return nil, emperror.With(err,
@@ -73,6 +73,18 @@ func (g *Manager) FindOne(cg ClusterGroupModel) (*ClusterGroupModel, error) {
 
 	return &result, nil
 }
+
+func (g *Manager) GetClusterGroupById(ctx context.Context, orgId uint, clusterGroupId uint) (*clustergroup.ClusterGroup, error) {
+	cgModel, err := g.FindOne(ClusterGroupModel{
+		OrganizationID: orgId,
+		ID:             clusterGroupId,
+	})
+	if err != nil {
+		return nil, err
+	}
+	return g.GetClusterGroupFromModel(ctx, cgModel, false), nil
+}
+
 
 // GetFeature returns params of a cluster group feature by clusterGroupId and feature name
 func (g *Manager) GetFeature(clusterGroup clustergroup.ClusterGroup, featureName string) (*ClusterGroupFeature, error) {
@@ -280,43 +292,44 @@ func (g *Manager) DeleteClusterGroup(cgroup *ClusterGroupModel) error {
 }
 
 func (g *Manager) GetClusterGroupFromModel(ctx context.Context, cg *ClusterGroupModel, withStatus bool) *clustergroup.ClusterGroup {
-	var response clustergroup.ClusterGroup
-	response.Name = cg.Name
-	response.Id = cg.ID
-	response.UID = cg.UID
+	var clusterGroup clustergroup.ClusterGroup
+	clusterGroup.Name = cg.Name
+	clusterGroup.Id = cg.ID
+	clusterGroup.UID = cg.UID
+	clusterGroup.OrganizationID = cg.OrganizationID
 	if withStatus {
-		response.MembersStatus = make([]clustergroup.MemberClusterStatus, 0)
+		clusterGroup.MembersStatus = make([]clustergroup.MemberClusterStatus, 0)
 	} else {
-		response.Members = make([]string, 0)
+		clusterGroup.Members = make([]string, 0)
 	}
-	response.MemberClusters = make(map[string]cluster.CommonCluster, 0)
+	clusterGroup.MemberClusters = make(map[string]cluster.CommonCluster, 0)
 	for _, m := range cg.Members {
 		cluster, err := g.clusterGetter.GetClusterByIDOnly(ctx, m.ClusterID)
 		if withStatus {
 			if err != nil {
-				response.MembersStatus = append(response.MembersStatus, clustergroup.MemberClusterStatus{
+				clusterGroup.MembersStatus = append(clusterGroup.MembersStatus, clustergroup.MemberClusterStatus{
 					Name:   cluster.GetName(),
 					Status: err.Error(),
 				})
 			} else {
 				clusterStatus, err := cluster.GetStatus()
 				if err != nil {
-					response.MembersStatus = append(response.MembersStatus, clustergroup.MemberClusterStatus{
+					clusterGroup.MembersStatus = append(clusterGroup.MembersStatus, clustergroup.MemberClusterStatus{
 						Name:   cluster.GetName(),
 						Status: err.Error(),
 					})
 				} else {
-					response.MembersStatus = append(response.MembersStatus, clustergroup.MemberClusterStatus{
+					clusterGroup.MembersStatus = append(clusterGroup.MembersStatus, clustergroup.MemberClusterStatus{
 						Name:   cluster.GetName(),
 						Status: clusterStatus.Status,
 					})
 				}
 			}
 		} else {
-			response.Members = append(response.Members, cluster.GetName())
+			clusterGroup.Members = append(clusterGroup.Members, cluster.GetName())
 		}
-		response.MemberClusters[cluster.GetName()] = cluster
+		clusterGroup.MemberClusters[cluster.GetName()] = cluster
 	}
 
-	return &response
+	return &clusterGroup
 }

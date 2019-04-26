@@ -48,8 +48,8 @@ type ClusterGroupModel struct {
 // MemberClusterModel describes a member of a cluster group.
 type MemberClusterModel struct {
 	ID             uint `gorm:"primary_key"`
-	ClusterGroupID uint `gorm:"unique_index:idx_cgid"`
-	ClusterID      uint `gorm:"unique_index:idx_uid"`
+	ClusterGroupID uint
+	ClusterID      uint
 }
 
 // ClusterGroupFeature describes feature param of a cluster group.

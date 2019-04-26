@@ -378,7 +378,7 @@ func CreateDeployment(chartName, chartVersion string, chartPackage []byte, names
 	}
 
 	if len(strings.TrimSpace(releaseName)) == 0 {
-		releaseName, _ = generateName("")
+		releaseName, _ = GenerateName("")
 	}
 
 	if namespace == "" {
@@ -646,7 +646,7 @@ func GetDeploymentStatus(releaseName string, kubeConfig []byte) (int32, error) {
 
 }
 
-func generateName(nameTemplate string) (string, error) {
+func GenerateName(nameTemplate string) (string, error) {
 	t, err := template.New("name-template").Funcs(sprig.TxtFuncMap()).Parse(nameTemplate)
 	if err != nil {
 		return "", err
@@ -682,7 +682,7 @@ func checkDependencies(ch *chart.Chart, reqs *chartutil.Requirements) error {
 	return nil
 }
 
-func mergeValues(dest map[string]interface{}, src map[string]interface{}) map[string]interface{} {
+func MergeValues(dest map[string]interface{}, src map[string]interface{}) map[string]interface{} {
 	for k, v := range src {
 		// If the key doesn't exist already, then just set the key to that value
 		if _, exists := dest[k]; !exists {
@@ -708,7 +708,7 @@ func mergeValues(dest map[string]interface{}, src map[string]interface{}) map[st
 			continue
 		}
 		// If we got to this point, it is a map in both, so merge them
-		dest[k] = mergeValues(destMap, nextMap)
+		dest[k] = MergeValues(destMap, nextMap)
 	}
 	return dest
 }
