@@ -36,7 +36,7 @@ type ClusterGroup struct {
 	Id             uint                             `json:"id" yaml:"id"`
 	UID            string                           `json:"uid" yaml:"uid"`
 	Name           string                           `json:"name" yaml:"name"`
-	OrganizationID uint								`json:"organizationId" yaml:"organizationId"`
+	OrganizationID uint                             `json:"organizationId" yaml:"organizationId"`
 	Members        []string                         `json:"members,omitempty" yaml:"members"`
 	MemberClusters map[string]cluster.CommonCluster `json:"-" yaml:"-"`
 	MembersStatus  []MemberClusterStatus            `json:"membersStatus,omitempty" yaml:"membersStatus"`

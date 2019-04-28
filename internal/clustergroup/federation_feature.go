@@ -40,9 +40,9 @@ func (f *FederationClusterGroupFeature) LeaveCluster(cluster cluster.CommonClust
 }
 
 func (f *FederationClusterGroupFeature) GetMembersStatus() (map[string]string, error) {
-    statusMap := make(map[string]string, 0)
-    for _, memberCluster := range f.ClusterGroup.MemberClusters {
-    	statusMap[memberCluster.GetName()] = "ready"
+	statusMap := make(map[string]string, 0)
+	for _, memberCluster := range f.ClusterGroup.MemberClusters {
+		statusMap[memberCluster.GetName()] = "ready"
 	}
 	return statusMap, nil
 }

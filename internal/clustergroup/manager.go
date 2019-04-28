@@ -74,6 +74,18 @@ func (g *Manager) FindOne(cg ClusterGroupModel) (*ClusterGroupModel, error) {
 	return &result, nil
 }
 
+// findAll returns all cluster groups
+func (g *Manager) FindAll() ([]*ClusterGroupModel, error) {
+	var cgroups []*ClusterGroupModel
+
+	err := g.db.Preload("Members").Find(&cgroups).Error
+	if err != nil {
+		return nil, errors.Wrap(err, "could not fetch cluster groups")
+	}
+
+	return cgroups, nil
+}
+
 func (g *Manager) GetClusterGroupById(ctx context.Context, orgId uint, clusterGroupId uint) (*clustergroup.ClusterGroup, error) {
 	cgModel, err := g.FindOne(ClusterGroupModel{
 		OrganizationID: orgId,
@@ -85,7 +97,6 @@ func (g *Manager) GetClusterGroupById(ctx context.Context, orgId uint, clusterGr
 	return g.GetClusterGroupFromModel(ctx, cgModel, false), nil
 }
 
-
 // GetFeature returns params of a cluster group feature by clusterGroupId and feature name
 func (g *Manager) GetFeature(clusterGroup clustergroup.ClusterGroup, featureName string) (*ClusterGroupFeature, error) {
 	if clusterGroup.Id == 0 {
@@ -94,7 +105,7 @@ func (g *Manager) GetFeature(clusterGroup clustergroup.ClusterGroup, featureName
 	var results []ClusterGroupFeatureParamModel
 	err := g.db.Find(&results, ClusterGroupFeatureParamModel{
 		ClusterGroupID: clusterGroup.Id,
-		FeatureName: featureName,
+		FeatureName:    featureName,
 	}).Error
 	if gorm.IsRecordNotFoundError(err) {
 		return nil, errors.WithStack(errors.New("cluster group not found"))
@@ -106,13 +117,13 @@ func (g *Manager) GetFeature(clusterGroup clustergroup.ClusterGroup, featureName
 	}
 
 	params := make(map[string]string, 0)
-	for _, r:= range results {
+	for _, r := range results {
 		params[r.ParamName] = r.ParamValue
 	}
 	feature := &ClusterGroupFeature{
 		ClusterGroup: clusterGroup,
-		Params: params,
-		Name: featureName,
+		Params:       params,
+		Name:         featureName,
 	}
 
 	if params[FeatureEnabled] == "true" {
@@ -126,23 +137,22 @@ func getFeatureHandler(featureName string, clusterGroup clustergroup.ClusterGrou
 	case "federation":
 		return &FederationClusterGroupFeature{
 			ClusterGroupFeature: ClusterGroupFeature{
-				Name: featureName,
+				Name:         featureName,
 				ClusterGroup: clusterGroup,
-				Params: params,
+				Params:       params,
 			},
 		}
 	case "service-mesh":
 		return &ServiceMeshClusterGroupFeature{
 			ClusterGroupFeature: ClusterGroupFeature{
-				Name: featureName,
+				Name:         featureName,
 				ClusterGroup: clusterGroup,
-				Params: params,
+				Params:       params,
 			},
 		}
 	}
 	return nil
 }
-
 
 // GetEnabledFeatures
 func (g *Manager) GetEnabledFeatureHandlers(clusterGroup clustergroup.ClusterGroup) (map[string]ClusterGroupFeatureHandler, error) {
@@ -186,7 +196,7 @@ func (g *Manager) SetFeatureParams(feature ClusterGroupFeature, enabled bool, pa
 	var results []ClusterGroupFeatureParamModel
 	err := g.db.Find(&results, ClusterGroupFeatureParamModel{
 		ClusterGroupID: feature.ClusterGroup.Id,
-		FeatureName: feature.Name,
+		FeatureName:    feature.Name,
 	}).Error
 	if gorm.IsRecordNotFoundError(err) {
 		return errors.WithStack(errors.New("cluster group not found"))
@@ -218,9 +228,9 @@ func (g *Manager) SetFeatureParams(feature ClusterGroupFeature, enabled bool, pa
 	for k, v := range params {
 		paramsToCreateUpdate = append(paramsToCreateUpdate, ClusterGroupFeatureParamModel{
 			ClusterGroupID: feature.ClusterGroup.Id,
-			FeatureName: feature.Name,
-			ParamName: k,
-			ParamValue: v,
+			FeatureName:    feature.Name,
+			ParamName:      k,
+			ParamValue:     v,
 		})
 	}
 
@@ -253,18 +263,6 @@ func (g *Manager) SetFeatureParams(feature ClusterGroupFeature, enabled bool, pa
 	//	return emperror.Wrap(err, "Error saving feature params")
 	//}
 	return nil
-}
-
-// findAll returns all cluster groups
-func (g *Manager) FindAll() ([]*ClusterGroupModel, error) {
-	var cgroups []*ClusterGroupModel
-
-	err := g.db.Preload("Members").Find(&cgroups).Error
-	if err != nil {
-		return nil, errors.Wrap(err, "could not fetch cluster groups")
-	}
-
-	return cgroups, nil
 }
 
 func (g *Manager) DeleteClusterGroup(cgroup *ClusterGroupModel) error {

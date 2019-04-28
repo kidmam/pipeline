@@ -135,18 +135,94 @@ func (n *ClusterGroupAPI) GetAllClusterGroups(c *gin.Context) {
 }
 
 func getLeavingMembers(existingClusterGroup *clustergroup.ClusterGroup, requestedMembers []string) map[string]cluster.CommonCluster {
-    leavingMembers := make(map[string]cluster.CommonCluster, 0)
-    for clusterName, cluster := range existingClusterGroup.MemberClusters {
-    	leavingMembers[clusterName] = cluster
+	leavingMembers := make(map[string]cluster.CommonCluster, 0)
+	for clusterName, cluster := range existingClusterGroup.MemberClusters {
+		leavingMembers[clusterName] = cluster
 	}
 	for _, clusterName := range requestedMembers {
 		delete(leavingMembers, clusterName)
 	}
-    return leavingMembers
+	return leavingMembers
 }
 
+func (n *ClusterGroupAPI) CreateClusterGroup(c *gin.Context) {
+	ctx := ginutils.Context(context.Background(), c)
 
-func (n *ClusterGroupAPI) SetupClusterGroup(c *gin.Context, update bool) {
+	var req clustergroup.ClusterGroupRequest
+	if err := c.BindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, pkgCommon.ErrorResponse{
+			Code:    http.StatusBadRequest,
+			Message: "Error parsing request",
+			Error:   err.Error(),
+		})
+		return
+	}
+
+	orgId := auth.GetCurrentOrganization(c.Request).ID
+
+	cgModel, err := n.clusterGroupManager.FindOne(cgroup.ClusterGroupModel{
+		OrganizationID: orgId,
+		Name:           req.Name,
+	})
+	if err != nil {
+		if !gorm.IsRecordNotFoundError(err) {
+			errorHandler.Handle(err)
+			ginutils.ReplyWithErrorResponse(c, errorResponseFrom(err))
+			return
+		}
+	}
+	if cgModel != nil {
+		c.JSON(http.StatusBadRequest, pkgCommon.ErrorResponse{
+			Code:    http.StatusBadRequest,
+			Message: "Cluster group already exists with this name",
+			Error:   "Cluster group already exists with this name",
+		})
+		return
+	}
+
+	memberClusterModels := make([]cgroup.MemberClusterModel, 0)
+	for _, clusterName := range req.Members {
+		cluster, err := n.clusterGetter.GetClusterByName(ctx, orgId, clusterName)
+		if err != nil {
+			err = errors.Wrapf(err, "%s not found", clusterName)
+			errorHandler.Handle(err)
+			ginutils.ReplyWithErrorResponse(c, errorResponseFrom(err))
+			return
+		}
+		clusterIsReady, err := cluster.IsReady()
+		if err == nil && clusterIsReady {
+			log.Infof(clusterName)
+			memberClusterModels = append(memberClusterModels, cgroup.MemberClusterModel{
+				ClusterID: cluster.GetID(),
+			})
+		}
+
+	}
+	if len(memberClusterModels) == 0 {
+		err := errors.New("No ready cluster members found.")
+		c.JSON(http.StatusBadRequest, pkgCommon.ErrorResponse{
+			Code:    http.StatusBadRequest,
+			Message: "No ready cluster members found.",
+			Error:   err.Error(),
+		})
+		return
+	}
+
+	clusterGroupModel := &cgroup.ClusterGroupModel{
+		Name:           req.Name,
+		OrganizationID: orgId,
+		Members:        memberClusterModels,
+	}
+
+	err = n.db.Save(clusterGroupModel).Error
+	if err != nil {
+		errorHandler.Handle(err)
+		ginutils.ReplyWithErrorResponse(c, errorResponseFrom(err))
+		return
+	}
+}
+
+func (n *ClusterGroupAPI) UpdateClusterGroup(c *gin.Context) {
 	ctx := ginutils.Context(context.Background(), c)
 
 	var req clustergroup.ClusterGroupRequest
@@ -167,26 +243,12 @@ func (n *ClusterGroupAPI) SetupClusterGroup(c *gin.Context, update bool) {
 	})
 
 	if err != nil {
-		if !gorm.IsRecordNotFoundError(err) {
-			errorHandler.Handle(err)
-			ginutils.ReplyWithErrorResponse(c, errorResponseFrom(err))
-			return
-		}
+		errorHandler.Handle(err)
+		ginutils.ReplyWithErrorResponse(c, errorResponseFrom(err))
+		return
 	}
 
-	var existingClusterGroup *clustergroup.ClusterGroup
-	if cgModel != nil {
-		if !update {
-			c.JSON(http.StatusBadRequest, pkgCommon.ErrorResponse{
-				Code:    http.StatusBadRequest,
-				Message: "Cluster group already exists with this name",
-				Error:   "Cluster group already exists with this name",
-			})
-			return
-		}
-		existingClusterGroup = n.clusterGroupManager.GetClusterGroupFromModel(ctx, cgModel, false)
-
-	}
+	existingClusterGroup := n.clusterGroupManager.GetClusterGroupFromModel(ctx, cgModel, false)
 
 	memberClusterModels := make([]cgroup.MemberClusterModel, 0)
 	joiningMembers := make(map[string]cluster.CommonCluster, 0)
@@ -206,7 +268,7 @@ func (n *ClusterGroupAPI) SetupClusterGroup(c *gin.Context, update bool) {
 			})
 		}
 
-		if update && !existingClusterGroup.IsMember(clusterName) {
+		if !existingClusterGroup.IsMember(clusterName) {
 			joiningMembers[clusterName] = cluster
 		}
 	}
@@ -220,22 +282,10 @@ func (n *ClusterGroupAPI) SetupClusterGroup(c *gin.Context, update bool) {
 		return
 	}
 
-	clusterGroupModel := &cgroup.ClusterGroupModel{
-		Name:           req.Name,
-		OrganizationID: orgId,
-		Members:        memberClusterModels,
-	}
+	cgModel.Name = req.Name
+	cgModel.Members = memberClusterModels
 
-	if update {
-		clusterGroupModel, err = n.clusterGroupManager.FindOne(cgroup.ClusterGroupModel{
-			OrganizationID: orgId,
-			ID:           existingClusterGroup.Id,
-		})
-		clusterGroupModel.Members = memberClusterModels
-		clusterGroupModel.Name = req.Name
-	}
-
-	err = n.db.Save(clusterGroupModel).Error
+	err = n.db.Save(cgModel).Error
 	if err != nil {
 		errorHandler.Handle(err)
 		ginutils.ReplyWithErrorResponse(c, errorResponseFrom(err))
@@ -243,40 +293,30 @@ func (n *ClusterGroupAPI) SetupClusterGroup(c *gin.Context, update bool) {
 	}
 
 	//call feature handlers on members update
-	if update {
-		enabledFeatures, err := n.clusterGroupManager.GetEnabledFeatureHandlers(*existingClusterGroup)
-		if err != nil {
-			errorHandler.Handle(err)
-			ginutils.ReplyWithErrorResponse(c, errorResponseFrom(err))
-			return
-		}
+	enabledFeatures, err := n.clusterGroupManager.GetEnabledFeatureHandlers(*existingClusterGroup)
+	if err != nil {
+		errorHandler.Handle(err)
+		ginutils.ReplyWithErrorResponse(c, errorResponseFrom(err))
+		return
+	}
 
-		if len(joiningMembers) > 0 {
-			for _, member := range joiningMembers {
-				for _, feature := range enabledFeatures {
-					err = feature.JoinCluster(member)
-				}
-			}
-		}
-
-		leavingMembers := getLeavingMembers(existingClusterGroup, req.Members)
-		if len(leavingMembers) > 0 {
-			for _, member := range leavingMembers {
-				for _, feature := range enabledFeatures {
-					err = feature.LeaveCluster(member)
-				}
+	if len(joiningMembers) > 0 {
+		for _, member := range joiningMembers {
+			for _, feature := range enabledFeatures {
+				err = feature.JoinCluster(member)
 			}
 		}
 	}
 
-}
+	leavingMembers := getLeavingMembers(existingClusterGroup, req.Members)
+	if len(leavingMembers) > 0 {
+		for _, member := range leavingMembers {
+			for _, feature := range enabledFeatures {
+				err = feature.LeaveCluster(member)
+			}
+		}
+	}
 
-func (n *ClusterGroupAPI) CreateClusterGroup(c *gin.Context) {
-	n.SetupClusterGroup(c, false)
-}
-
-func (n *ClusterGroupAPI) UpdateClusterGroup(c *gin.Context) {
-	n.SetupClusterGroup(c, true)
 }
 
 func (n *ClusterGroupAPI) GetFeature(c *gin.Context) {
@@ -362,7 +402,7 @@ func (n *ClusterGroupAPI) SetFeature(c *gin.Context) {
 }
 
 type ClusterGroupDeployment struct {
-	ClusterGroupId		  uint
+	ClusterGroupId        uint
 	DeploymentName        string
 	DeploymentVersion     string
 	DeploymentPackage     []byte
@@ -370,7 +410,7 @@ type ClusterGroupDeployment struct {
 	ReuseValues           bool
 	Namespace             string
 	Values                []byte
-	ValueOverrides 		  map[string][]byte
+	ValueOverrides        map[string][]byte
 	OrganizationName      string
 	DryRun                bool
 	Wait                  bool
@@ -390,17 +430,17 @@ func parseDeploymentRequest(c *gin.Context, clusterGroup *clustergroup.ClusterGr
 	log.Debugf("Parsing chart %s with version %s and release name %s", deployment.Name, deployment.Version, deployment.ReleaseName)
 
 	request := ClusterGroupDeployment{
-		OrganizationName: organization.Name,
-		DeploymentName: deployment.Name,
-		DeploymentVersion: deployment.Version,
-		DeploymentPackage: deployment.Package,
+		OrganizationName:      organization.Name,
+		DeploymentName:        deployment.Name,
+		DeploymentVersion:     deployment.Version,
+		DeploymentPackage:     deployment.Package,
 		DeploymentReleaseName: deployment.ReleaseName,
-		ReuseValues: deployment.ReUseValues,
-		Namespace: deployment.Namespace,
-		DryRun: deployment.DryRun,
-		Wait: deployment.Wait,
-		Timeout: deployment.Timeout,
-		ValueOverrides: make(map[string][]byte),
+		ReuseValues:           deployment.ReUseValues,
+		Namespace:             deployment.Namespace,
+		DryRun:                deployment.DryRun,
+		Wait:                  deployment.Wait,
+		Timeout:               deployment.Timeout,
+		ValueOverrides:        make(map[string][]byte),
 	}
 
 	if deployment.Values != nil {
@@ -419,7 +459,6 @@ func parseDeploymentRequest(c *gin.Context, clusterGroup *clustergroup.ClusterGr
 	log.Debug("Custom values: ", string(request.Values))
 	return &request, nil
 }
-
 
 func installDeploymentOnCluster(commonCluster cluster.CommonCluster, cgDeployment *ClusterGroupDeployment) error {
 	log.Infof("Installing deployment on %s", commonCluster.GetName())
@@ -515,9 +554,9 @@ func (n *ClusterGroupAPI) CreateDeployment(c *gin.Context) {
 				status = fmt.Sprintf("FAILED: %s", clerr.Error())
 			}
 			statusChan <- clustergroup.DeploymentStatus{
-				ClusterId: commonCluster.GetID(),
+				ClusterId:   commonCluster.GetID(),
 				ClusterName: commonCluster.GetName(),
-				Status: status,
+				Status:      status,
 			}
 		}(commonCluster, cgDeployment)
 
@@ -531,7 +570,7 @@ func (n *ClusterGroupAPI) CreateDeployment(c *gin.Context) {
 
 	log.Debug("Release name: ", cgDeployment.DeploymentReleaseName)
 	response := clustergroup.CreateUpdateDeploymentResponse{
-		ReleaseName: cgDeployment.DeploymentReleaseName,
+		ReleaseName:    cgDeployment.DeploymentReleaseName,
 		TargetClusters: targetClusterStatus,
 	}
 	c.JSON(http.StatusCreated, response)
@@ -591,9 +630,9 @@ func (n *ClusterGroupAPI) GetDeployment(c *gin.Context) {
 				status = fmt.Sprintf("Failed to get status: %s", clErr.Error())
 			}
 			statusChan <- clustergroup.DeploymentStatus{
-				ClusterId: commonCluster.GetID(),
+				ClusterId:   commonCluster.GetID(),
 				ClusterName: commonCluster.GetName(),
-				Status: status,
+				Status:      status,
 			}
 		}(commonCluster, name)
 
@@ -606,7 +645,7 @@ func (n *ClusterGroupAPI) GetDeployment(c *gin.Context) {
 	}
 
 	response := clustergroup.GetDeploymentResponse{
-		ReleaseName: name,
+		ReleaseName:    name,
 		TargetClusters: targetClusterStatus,
 	}
 
@@ -631,4 +670,3 @@ func (n *ClusterGroupAPI) UpgradeDeployment(c *gin.Context) {
 	c.JSON(http.StatusCreated, "")
 	return
 }
-

@@ -14,16 +14,16 @@
 
 package clustergroup
 
-import(
+import (
 	"github.com/banzaicloud/pipeline/cluster"
 	cgroup "github.com/banzaicloud/pipeline/pkg/clustergroup"
 )
 
 type ClusterGroupFeature struct {
-	Name string
+	Name         string
 	ClusterGroup cgroup.ClusterGroup
-	Enabled bool
-	Params map[string]string
+	Enabled      bool
+	Params       map[string]string
 }
 
 type ClusterGroupFeatureHandler interface {
