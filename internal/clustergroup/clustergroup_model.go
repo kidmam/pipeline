@@ -26,9 +26,9 @@ import (
 
 // TableName constants
 const (
-	clustersTableName                  = "clustergroups"
-	clusterGroupFeatureParamsTableName = "clustergroup_feature_params"
-	clusterGroupMembersTableName       = "clustergroup_members"
+	clustersTableName             = "clustergroups"
+	clusterGroupFeaturesTableName = "clustergroup_features"
+	clusterGroupMembersTableName  = "clustergroup_members"
 )
 
 // ClusterGroupModel describes the cluster group model.
@@ -39,10 +39,10 @@ type ClusterGroupModel struct {
 	UpdatedAt      time.Time
 	DeletedAt      *time.Time `gorm:"unique_index:idx_unique_id" sql:"index"`
 	CreatedBy      uint
-	Name           string                          `gorm:"unique_index:idx_unique_id"`
-	OrganizationID uint                            `gorm:"unique_index:idx_unique_id"`
-	Members        []MemberClusterModel            `gorm:"foreignkey:ClusterGroupID"`
-	FeatureParams  []ClusterGroupFeatureParamModel `gorm:"foreignkey:ClusterGroupID"`
+	Name           string                     `gorm:"unique_index:idx_unique_id"`
+	OrganizationID uint                       `gorm:"unique_index:idx_unique_id"`
+	Members        []MemberClusterModel       `gorm:"foreignkey:ClusterGroupID"`
+	FeatureParams  []ClusterGroupFeatureModel `gorm:"foreignkey:ClusterGroupID"`
 }
 
 // MemberClusterModel describes a member of a cluster group.
@@ -52,13 +52,13 @@ type MemberClusterModel struct {
 	ClusterID      uint
 }
 
-// ClusterGroupFeature describes feature param of a cluster group.
-type ClusterGroupFeatureParamModel struct {
+// ClusterGroupFeature describes a feature of a cluster group.
+type ClusterGroupFeatureModel struct {
 	ID             uint `gorm:"primary_key"`
+	Name           string
 	ClusterGroupID uint
-	FeatureName    string
-	ParamName      string
-	ParamValue     string
+	Enabled        bool
+	Properties     []byte
 }
 
 // TableName changes the default table name.
@@ -67,8 +67,8 @@ func (ClusterGroupModel) TableName() string {
 }
 
 // TableName changes the default table name.
-func (ClusterGroupFeatureParamModel) TableName() string {
-	return clusterGroupFeatureParamsTableName
+func (ClusterGroupFeatureModel) TableName() string {
+	return clusterGroupFeaturesTableName
 }
 
 // TableName changes the default table name.
@@ -80,7 +80,6 @@ func (g *ClusterGroupModel) BeforeCreate() (err error) {
 	if g.UID == "" {
 		g.UID = uuid.Must(uuid.NewV4()).String()
 	}
-
 	return
 }
 
@@ -93,7 +92,7 @@ func (g ClusterGroupModel) String() string {
 func Migrate(db *gorm.DB, logger logrus.FieldLogger) error {
 	tables := []interface{}{
 		&ClusterGroupModel{},
-		&ClusterGroupFeatureParamModel{},
+		&ClusterGroupFeatureModel{},
 		&MemberClusterModel{},
 	}
 

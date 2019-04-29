@@ -15,7 +15,6 @@
 package clustergroup
 
 import (
-	"github.com/banzaicloud/pipeline/cluster"
 	cgroup "github.com/banzaicloud/pipeline/pkg/clustergroup"
 )
 
@@ -23,23 +22,10 @@ type ClusterGroupFeature struct {
 	Name         string
 	ClusterGroup cgroup.ClusterGroup
 	Enabled      bool
-	Params       map[string]string
+	Properties   interface{}
 }
 
 type ClusterGroupFeatureHandler interface {
-	Enable() error
-	Disable() error
-	JoinCluster(cluster cluster.CommonCluster) error
-	LeaveCluster(cluster cluster.CommonCluster) error
-	SetParam(name string, value string)
-	SetEnabled(enabled bool)
-	GetMembersStatus() (map[string]string, error)
-}
-
-func (c *ClusterGroupFeature) SetParam(name string, value string) {
-	c.Params[name] = value
-}
-
-func (c *ClusterGroupFeature) SetEnabled(enabled bool) {
-	c.Enabled = enabled
+	ReconcileState(featureState ClusterGroupFeature) error
+	GetMembersStatus(featureState ClusterGroupFeature) (map[string]string, error)
 }

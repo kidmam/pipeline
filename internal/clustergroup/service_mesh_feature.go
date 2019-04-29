@@ -13,36 +13,3 @@
 // limitations under the License.
 
 package clustergroup
-
-import "github.com/banzaicloud/pipeline/cluster"
-
-type ServiceMeshClusterGroupFeature struct {
-	ClusterGroupFeature
-}
-
-func (f *ServiceMeshClusterGroupFeature) Enable() error {
-
-	return nil
-}
-
-func (f *ServiceMeshClusterGroupFeature) Disable() error {
-
-	return nil
-}
-
-func (f *ServiceMeshClusterGroupFeature) JoinCluster(cluster cluster.CommonCluster) error {
-
-	return nil
-}
-func (f *ServiceMeshClusterGroupFeature) LeaveCluster(cluster cluster.CommonCluster) error {
-
-	return nil
-}
-
-func (f *ServiceMeshClusterGroupFeature) GetMembersStatus() (map[string]string, error) {
-	statusMap := make(map[string]string, 0)
-	for _, memberCluster := range f.ClusterGroup.MemberClusters {
-		statusMap[memberCluster.GetName()] = "ready"
-	}
-	return statusMap, nil
-}

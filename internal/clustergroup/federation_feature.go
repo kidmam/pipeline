@@ -14,34 +14,37 @@
 
 package clustergroup
 
-import "github.com/banzaicloud/pipeline/cluster"
+import (
+	"github.com/goph/emperror"
+	"github.com/sirupsen/logrus"
+)
 
-type FederationClusterGroupFeature struct {
-	ClusterGroupFeature
+type FederationHandler struct {
+	logger       logrus.FieldLogger
+	errorHandler emperror.Handler
 }
 
-func (f *FederationClusterGroupFeature) Enable() error {
+const FederationFeatureName = "federation"
 
+// NewFederationHandler returns a new FederationHandler instance.
+func NewFederationHandler(
+	logger logrus.FieldLogger,
+	errorHandler emperror.Handler,
+) *FederationHandler {
+	return &FederationHandler{
+		logger:       logger,
+		errorHandler: errorHandler,
+	}
+}
+
+func (f *FederationHandler) ReconcileState(featureState ClusterGroupFeature) error {
+	f.logger.Infof("federation enabled %v on group: %v", featureState.Enabled, featureState.ClusterGroup.Name)
 	return nil
 }
 
-func (f *FederationClusterGroupFeature) Disable() error {
-
-	return nil
-}
-
-func (f *FederationClusterGroupFeature) JoinCluster(cluster cluster.CommonCluster) error {
-
-	return nil
-}
-func (f *FederationClusterGroupFeature) LeaveCluster(cluster cluster.CommonCluster) error {
-
-	return nil
-}
-
-func (f *FederationClusterGroupFeature) GetMembersStatus() (map[string]string, error) {
+func (f *FederationHandler) GetMembersStatus(featureState ClusterGroupFeature) (map[string]string, error) {
 	statusMap := make(map[string]string, 0)
-	for _, memberCluster := range f.ClusterGroup.MemberClusters {
+	for _, memberCluster := range featureState.ClusterGroup.MemberClusters {
 		statusMap[memberCluster.GetName()] = "ready"
 	}
 	return statusMap, nil

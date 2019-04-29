@@ -16,6 +16,7 @@ package clustergroup
 
 import (
 	"context"
+	"encoding/json"
 
 	"github.com/banzaicloud/pipeline/cluster"
 	"github.com/banzaicloud/pipeline/pkg/clustergroup"
@@ -25,18 +26,17 @@ import (
 	"github.com/sirupsen/logrus"
 )
 
-const FeatureEnabled = "enabled"
-
 type ClusterGetter interface {
 	GetClusterByIDOnly(ctx context.Context, clusterID uint) (cluster.CommonCluster, error)
 }
 
 // Manager
 type Manager struct {
-	clusterGetter ClusterGetter
-	db            *gorm.DB
-	logger        logrus.FieldLogger
-	errorHandler  emperror.Handler
+	clusterGetter     ClusterGetter
+	db                *gorm.DB
+	logger            logrus.FieldLogger
+	errorHandler      emperror.Handler
+	featureHandlerMap map[string]ClusterGroupFeatureHandler
 }
 
 // NewManager returns a new Manager instance.
@@ -46,11 +46,13 @@ func NewManager(
 	logger logrus.FieldLogger,
 	errorHandler emperror.Handler,
 ) *Manager {
+	featureHandlerMap := make(map[string]ClusterGroupFeatureHandler, 0)
 	return &Manager{
-		clusterGetter: clusterGetter,
-		db:            db,
-		logger:        logger,
-		errorHandler:  errorHandler,
+		clusterGetter:     clusterGetter,
+		db:                db,
+		logger:            logger,
+		errorHandler:      errorHandler,
+		featureHandlerMap: featureHandlerMap,
 	}
 }
 
@@ -97,171 +99,151 @@ func (g *Manager) GetClusterGroupById(ctx context.Context, orgId uint, clusterGr
 	return g.GetClusterGroupFromModel(ctx, cgModel, false), nil
 }
 
-// GetFeature returns params of a cluster group feature by clusterGroupId and feature name
-func (g *Manager) GetFeature(clusterGroup clustergroup.ClusterGroup, featureName string) (*ClusterGroupFeature, error) {
-	if clusterGroup.Id == 0 {
-		return nil, errors.New("missing parameter: clusterGroupId")
-	}
-	var results []ClusterGroupFeatureParamModel
-	err := g.db.Find(&results, ClusterGroupFeatureParamModel{
-		ClusterGroupID: clusterGroup.Id,
-		FeatureName:    featureName,
-	}).Error
-	if gorm.IsRecordNotFoundError(err) {
-		return nil, errors.WithStack(errors.New("cluster group not found"))
-	}
-	if err != nil {
-		return nil, emperror.With(err,
-			"clusterGroupId", clusterGroup.Id,
-		)
-	}
-
-	params := make(map[string]string, 0)
-	for _, r := range results {
-		params[r.ParamName] = r.ParamValue
-	}
-	feature := &ClusterGroupFeature{
-		ClusterGroup: clusterGroup,
-		Params:       params,
-		Name:         featureName,
-	}
-
-	if params[FeatureEnabled] == "true" {
-		feature.Enabled = true
-	}
-	return feature, nil
+func (g *Manager) RegisterFeatureHandler(featureName string, handler ClusterGroupFeatureHandler) {
+	g.featureHandlerMap[featureName] = handler
 }
 
-func getFeatureHandler(featureName string, clusterGroup clustergroup.ClusterGroup, params map[string]string) ClusterGroupFeatureHandler {
-	switch featureName {
-	case "federation":
-		return &FederationClusterGroupFeature{
-			ClusterGroupFeature: ClusterGroupFeature{
-				Name:         featureName,
-				ClusterGroup: clusterGroup,
-				Params:       params,
-			},
-		}
-	case "service-mesh":
-		return &ServiceMeshClusterGroupFeature{
-			ClusterGroupFeature: ClusterGroupFeature{
-				Name:         featureName,
-				ClusterGroup: clusterGroup,
-				Params:       params,
-			},
+func (g *Manager) GetFeatureStatus(feature ClusterGroupFeature) (map[string]string, error) {
+	handler, ok := g.featureHandlerMap[feature.Name]
+	if !ok {
+		return nil, nil
+	}
+	return handler.GetMembersStatus(feature)
+}
+
+func (g *Manager) GetEnabledFeatures(clusterGroup clustergroup.ClusterGroup) (map[string]ClusterGroupFeature, error) {
+	enabledFeatures := make(map[string]ClusterGroupFeature, 0)
+
+	features, err := g.getFeatures(clusterGroup)
+	if err != nil {
+		return nil, err
+	}
+
+	for name, feature := range features {
+		if feature.Enabled {
+			enabledFeatures[name] = feature
 		}
 	}
+
+	return enabledFeatures, nil
+}
+
+func (g *Manager) ReconcileFeatureHandlers(clusterGroup clustergroup.ClusterGroup) error {
+	g.logger.Debugf("reconcile features for group: %s", clusterGroup.Name)
+
+	features, err := g.getFeatures(clusterGroup)
+	if err != nil {
+		return err
+	}
+
+	for name, feature := range features {
+		if feature.Enabled {
+			handler := g.featureHandlerMap[name]
+			if handler == nil {
+				g.logger.Debugf("no handler registered for cluster group feature %s", name)
+				continue
+			}
+			handler.ReconcileState(feature)
+		}
+	}
+
 	return nil
 }
 
-// GetEnabledFeatures
-func (g *Manager) GetEnabledFeatureHandlers(clusterGroup clustergroup.ClusterGroup) (map[string]ClusterGroupFeatureHandler, error) {
-	if clusterGroup.Id == 0 {
-		return nil, errors.New("missing parameter: clusterGroupId")
-	}
-	var results []ClusterGroupFeatureParamModel
-	err := g.db.Find(&results, ClusterGroupFeatureParamModel{
+func (g *Manager) getFeatures(clusterGroup clustergroup.ClusterGroup) (map[string]ClusterGroupFeature, error) {
+	features := make(map[string]ClusterGroupFeature, 0)
+
+	var results []ClusterGroupFeatureModel
+	err := g.db.Find(&results, ClusterGroupFeatureModel{
 		ClusterGroupID: clusterGroup.Id,
 	}).Error
-	if gorm.IsRecordNotFoundError(err) {
-		return nil, errors.WithStack(errors.New("cluster group not found"))
-	}
 	if err != nil {
+		if gorm.IsRecordNotFoundError(err) {
+			return features, nil
+		}
 		return nil, emperror.With(err,
 			"clusterGroupId", clusterGroup.Id,
 		)
 	}
 
-	features := make(map[string]ClusterGroupFeatureHandler, 0)
 	for _, r := range results {
-		cgFeature, exists := features[r.FeatureName]
-		if !exists {
-			params := make(map[string]string, 0)
-			cgFeature := getFeatureHandler(r.FeatureName, clusterGroup, params)
-			features[r.FeatureName] = cgFeature
+		var featureProperties interface{}
+		json.Unmarshal(r.Properties, featureProperties)
+		cgFeature := ClusterGroupFeature{
+			Name:         r.Name,
+			Enabled:      r.Enabled,
+			ClusterGroup: clusterGroup,
+			Properties:   featureProperties,
 		}
-		if r.ParamName == FeatureEnabled {
-			cgFeature.SetEnabled(true)
-		} else {
-			cgFeature.SetParam(r.ParamName, r.ParamValue)
-		}
+		features[r.Name] = cgFeature
 	}
 
 	return features, nil
 }
 
-// SetFeatureParams sets params of a cluster group feature
-func (g *Manager) SetFeatureParams(feature ClusterGroupFeature, enabled bool, params map[string]string) error {
+// GetFeature returns params of a cluster group feature by clusterGroupId and feature name
+func (g *Manager) GetFeature(clusterGroup clustergroup.ClusterGroup, featureName string) (*ClusterGroupFeature, error) {
+	var result ClusterGroupFeatureModel
+	err := g.db.Where(ClusterGroupFeatureModel{
+		ClusterGroupID: clusterGroup.Id,
+		Name:           featureName,
+	}).First(&result).Error
 
-	var results []ClusterGroupFeatureParamModel
-	err := g.db.Find(&results, ClusterGroupFeatureParamModel{
-		ClusterGroupID: feature.ClusterGroup.Id,
-		FeatureName:    feature.Name,
-	}).Error
-	if gorm.IsRecordNotFoundError(err) {
-		return errors.WithStack(errors.New("cluster group not found"))
-	}
 	if err != nil {
+		if gorm.IsRecordNotFoundError(err) {
+			return nil, errors.WithStack(errors.New("cluster group feature not found"))
+		}
+		return nil, emperror.With(err,
+			"clusterGroupId", clusterGroup.Id,
+			"featureName", featureName,
+		)
+
+	}
+
+	var featureProperties interface{}
+	json.Unmarshal(result.Properties, featureProperties)
+	feature := &ClusterGroupFeature{
+		ClusterGroup: clusterGroup,
+		Properties:   featureProperties,
+		Name:         featureName,
+		Enabled:      result.Enabled,
+	}
+
+	return feature, nil
+}
+
+// SetFeatureParams sets params of a cluster group feature
+func (g *Manager) SetFeatureParams(featureName string, clusterGroup *clustergroup.ClusterGroup, enabled bool, properties interface{}) error {
+
+	var result ClusterGroupFeatureModel
+	err := g.db.Where(ClusterGroupFeatureModel{
+		ClusterGroupID: clusterGroup.Id,
+		Name:           featureName,
+	}).First(&result).Error
+
+	if err != nil && !gorm.IsRecordNotFoundError(err) {
 		return emperror.With(err,
-			"clusterGroupId", feature.ClusterGroup.Id,
+			"clusterGroupId", clusterGroup.Id,
+			"featureName", featureName,
 		)
 	}
 
-	if enabled {
-		params[FeatureEnabled] = "true"
+	if result.ID == 0 {
+		result.Name = featureName
+		result.ClusterGroupID = clusterGroup.Id
 	}
 
-	paramsToCreateUpdate := make([]ClusterGroupFeatureParamModel, 0)
-	paramsToDelete := make([]ClusterGroupFeatureParamModel, 0)
-	for _, r := range results {
-		value, paramExists := params[r.ParamName]
-		if !paramExists {
-			paramsToDelete = append(paramsToDelete, r)
-		}
-		if value != r.ParamValue {
-			paramsToCreateUpdate = append(paramsToCreateUpdate, r)
-		}
-		delete(params, r.ParamName)
+	result.Enabled = enabled
+	result.Properties, err = json.Marshal(properties)
+	if err != nil {
+		return emperror.Wrap(err, "Error marshalling feature properties")
 	}
 
-	// add new params to paramsToCreateUpdate
-	for k, v := range params {
-		paramsToCreateUpdate = append(paramsToCreateUpdate, ClusterGroupFeatureParamModel{
-			ClusterGroupID: feature.ClusterGroup.Id,
-			FeatureName:    feature.Name,
-			ParamName:      k,
-			ParamValue:     v,
-		})
+	err = g.db.Save(&result).Error
+	if err != nil {
+		return emperror.Wrap(err, "Error saving feature")
 	}
 
-	//tx := g.db.Begin()
-	//if tx.Error != nil {
-	//	return emperror.Wrap(err, "Error saving feature params")
-	//}
-	for _, r := range paramsToCreateUpdate {
-		err = g.db.Save(&r).Error
-		if err != nil {
-			//rollbackErr := tx.Rollback().Error
-			//if rollbackErr != nil {
-			//	return emperror.Wrapf(err, "Error rollback saving feature params: %s", rollbackErr.Error())
-			//}
-			return emperror.Wrap(err, "Error saving feature params")
-		}
-	}
-	for _, r := range paramsToDelete {
-		err = g.db.Delete(&r).Error
-		if err != nil {
-			//rollbackErr := tx.Rollback().Error
-			//if rollbackErr != nil {
-			//	return emperror.Wrapf(err, "Error rollback deleting feature params: %s", rollbackErr.Error())
-			//}
-			return emperror.Wrap(err, "Error deleting feature params")
-		}
-	}
-	//err = tx.Commit().Error
-	//if err != nil {
-	//	return emperror.Wrap(err, "Error saving feature params")
-	//}
 	return nil
 }
 
@@ -330,4 +312,47 @@ func (g *Manager) GetClusterGroupFromModel(ctx context.Context, cg *ClusterGroup
 	}
 
 	return &clusterGroup
+}
+
+func (g *Manager) CreateClusterGroup(name string, orgID uint, memberClusterModels []MemberClusterModel) (*uint, error) {
+	clusterGroupModel := &ClusterGroupModel{
+		Name:           name,
+		OrganizationID: orgID,
+		Members:        memberClusterModels,
+	}
+
+	err := g.db.Save(clusterGroupModel).Error
+	if err != nil {
+		return nil, err
+	}
+	return &clusterGroupModel.ID, nil
+}
+
+func (g *Manager) UpdateClusterGroup(ctx context.Context, cgroup *clustergroup.ClusterGroup, name string, newMembers map[uint]cluster.CommonCluster) (*clustergroup.ClusterGroup, error) {
+	cgModel, err := g.FindOne(ClusterGroupModel{
+		ID: cgroup.Id,
+	})
+	if err != nil {
+		return nil, err
+	}
+	updatedMembers := make([]MemberClusterModel, 0)
+
+	for _, member := range cgModel.Members {
+		if _, ok := newMembers[member.ClusterID]; !ok {
+			err = g.db.Delete(member).Error
+			if err != nil {
+				return nil, err
+			}
+		} else {
+			updatedMembers = append(updatedMembers, member)
+		}
+	}
+	//TODO add new
+
+	cgModel.Members = updatedMembers
+	err = g.db.Save(cgModel).Error
+	if err != nil {
+		return nil, err
+	}
+	return g.GetClusterGroupFromModel(ctx, cgModel, false), nil
 }

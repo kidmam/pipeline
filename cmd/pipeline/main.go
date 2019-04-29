@@ -265,6 +265,9 @@ func main() {
 	clusterGroupManager := clustergroup.NewManager(clusterManager, db, log, errorHandler)
 	clusterGroupApi := api.NewClusterGroupAPI(clusterManager, clusterGroupManager, db, log, errorHandler)
 
+	federationHandler := clustergroup.NewFederationHandler(logger, errorHandler)
+	clusterGroupManager.RegisterFeatureHandler(clustergroup.FederationFeatureName, federationHandler)
+
 	nplsApi := api.NewNodepoolManagerAPI(clusterGetter, log, errorHandler)
 
 	//Initialise Gin router

@@ -19,16 +19,22 @@ import (
 	"github.com/pkg/errors"
 )
 
-// ClusterGroupRequest describes fields of a Create / Update Cluster Group request
-type ClusterGroupRequest struct {
+// ClusterGroupCreateUpdateRequest describes fields of a Create / Update Cluster Group request
+type ClusterGroupCreateUpdateRequest struct {
 	Name    string   `json:"name" yaml:"name"`
 	Members []string `json:"members,omitempty" yaml:"members"`
+}
+
+// ClusterGroupCreateResponse describes fields of a Create Cluster Group response
+type ClusterGroupCreateResponse struct {
+	Name       string `json:"name"`
+	ResourceID uint   `json:"id"`
 }
 
 // MemberClusterStatus
 type MemberClusterStatus struct {
 	Name   string `json:"name" yaml:"name"`
-	Status string `json:"status,omitempty" yaml:"status"`
+	Status string `json:"status" yaml:"status"`
 }
 
 // ClusterGroup
@@ -38,8 +44,8 @@ type ClusterGroup struct {
 	Name           string                           `json:"name" yaml:"name"`
 	OrganizationID uint                             `json:"organizationId" yaml:"organizationId"`
 	Members        []string                         `json:"members,omitempty" yaml:"members"`
-	MemberClusters map[string]cluster.CommonCluster `json:"-" yaml:"-"`
 	MembersStatus  []MemberClusterStatus            `json:"membersStatus,omitempty" yaml:"membersStatus"`
+	MemberClusters map[string]cluster.CommonCluster `json:"-" yaml:"-"`
 }
 
 func (g *ClusterGroup) IsMember(clusterName string) bool {
@@ -53,18 +59,18 @@ func (g *ClusterGroup) IsMember(clusterName string) bool {
 
 // ClusterGroupFeatureRequest
 type ClusterGroupFeatureRequest struct {
-	Enabled    bool              `json:"enabled" yaml:"enabled"`
-	Properties map[string]string `json:"properties,omitempty" yaml:"properties"`
+	Enabled    bool        `json:"enabled" yaml:"enabled"`
+	Properties interface{} `json:"properties,omitempty" yaml:"properties"`
 }
 
 // ClusterGroupFeatureResponse
 type ClusterGroupFeatureResponse struct {
 	ClusterGroupFeatureRequest
-	Status map[string]string `json:"status" yaml:"status"`
+	Status map[string]string `json:"status,omitempty" yaml:"status"`
 }
 
-// Validate validates ClusterGroupRequest request
-func (g *ClusterGroupRequest) Validate() error {
+// Validate validates ClusterGroupCreateUpdateRequest request
+func (g *ClusterGroupCreateUpdateRequest) Validate() error {
 
 	if len(g.Name) == 0 {
 		return errors.New("cluster group name is empty")

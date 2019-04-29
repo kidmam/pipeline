@@ -18,6 +18,7 @@ import (
 	"context"
 	"fmt"
 	"net/http"
+	"reflect"
 	"strings"
 
 	"github.com/banzaicloud/pipeline/auth"
@@ -89,15 +90,14 @@ func (n *ClusterGroupAPI) GetClusterGroup(c *gin.Context) {
 }
 
 func (n *ClusterGroupAPI) DeleteClusterGroup(c *gin.Context) {
-	//ctx := ginutils.Context(context.Background(), c)
-	orgID := auth.GetCurrentOrganization(c.Request).ID
+	ctx := ginutils.Context(context.Background(), c)
+
 	clusterGroupId, ok := ginutils.UintParam(c, "id")
 	if !ok {
 		return
 	}
 
-	cg, err := n.clusterGroupManager.FindOne(cgroup.ClusterGroupModel{
-		OrganizationID: orgID,
+	cgModel, err := n.clusterGroupManager.FindOne(cgroup.ClusterGroupModel{
 		ID:             clusterGroupId,
 	})
 	if err != nil {
@@ -106,7 +106,27 @@ func (n *ClusterGroupAPI) DeleteClusterGroup(c *gin.Context) {
 		return
 	}
 
-	err = n.clusterGroupManager.DeleteClusterGroup(cg)
+	cgroup := n.clusterGroupManager.GetClusterGroupFromModel(ctx, cgModel, false)
+	enabledFeatures, err := n.clusterGroupManager.GetEnabledFeatures(*cgroup)
+	if err != nil {
+		errorHandler.Handle(err)
+		ginutils.ReplyWithErrorResponse(c, errorResponseFrom(err))
+		return
+	}
+	if len(enabledFeatures) > 0 {
+		if err != nil {
+			featureNames := reflect.ValueOf(enabledFeatures).MapKeys()
+			msg := fmt.Sprintf("cluster group: %s, has following features enabled: %s, you have to disable features, before deleting the cluster group.", cgroup.Name, featureNames)
+			c.JSON(http.StatusBadRequest, pkgCommon.ErrorResponse{
+				Code:    http.StatusBadRequest,
+				Message: msg,
+				Error:   msg,
+			})
+			return
+		}
+	}
+
+	err = n.clusterGroupManager.DeleteClusterGroup(cgModel)
 	if err != nil {
 		errorHandler.Handle(err)
 		ginutils.ReplyWithErrorResponse(c, errorResponseFrom(err))
@@ -134,21 +154,10 @@ func (n *ClusterGroupAPI) GetAllClusterGroups(c *gin.Context) {
 	c.JSON(http.StatusOK, response)
 }
 
-func getLeavingMembers(existingClusterGroup *clustergroup.ClusterGroup, requestedMembers []string) map[string]cluster.CommonCluster {
-	leavingMembers := make(map[string]cluster.CommonCluster, 0)
-	for clusterName, cluster := range existingClusterGroup.MemberClusters {
-		leavingMembers[clusterName] = cluster
-	}
-	for _, clusterName := range requestedMembers {
-		delete(leavingMembers, clusterName)
-	}
-	return leavingMembers
-}
-
 func (n *ClusterGroupAPI) CreateClusterGroup(c *gin.Context) {
 	ctx := ginutils.Context(context.Background(), c)
 
-	var req clustergroup.ClusterGroupRequest
+	var req clustergroup.ClusterGroupCreateUpdateRequest
 	if err := c.BindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, pkgCommon.ErrorResponse{
 			Code:    http.StatusBadRequest,
@@ -195,6 +204,7 @@ func (n *ClusterGroupAPI) CreateClusterGroup(c *gin.Context) {
 			memberClusterModels = append(memberClusterModels, cgroup.MemberClusterModel{
 				ClusterID: cluster.GetID(),
 			})
+			log.Infof("Join cluster %s to group: %s", clusterName, req.Name)
 		}
 
 	}
@@ -208,24 +218,27 @@ func (n *ClusterGroupAPI) CreateClusterGroup(c *gin.Context) {
 		return
 	}
 
-	clusterGroupModel := &cgroup.ClusterGroupModel{
-		Name:           req.Name,
-		OrganizationID: orgId,
-		Members:        memberClusterModels,
-	}
-
-	err = n.db.Save(clusterGroupModel).Error
+	id, err := n.clusterGroupManager.CreateClusterGroup(req.Name, orgId, memberClusterModels)
 	if err != nil {
 		errorHandler.Handle(err)
 		ginutils.ReplyWithErrorResponse(c, errorResponseFrom(err))
 		return
 	}
+
+	c.JSON(http.StatusAccepted, clustergroup.ClusterGroupCreateResponse{
+		Name:       req.Name,
+		ResourceID: *id,
+	})
 }
 
 func (n *ClusterGroupAPI) UpdateClusterGroup(c *gin.Context) {
 	ctx := ginutils.Context(context.Background(), c)
+	clusterGroupId, ok := ginutils.UintParam(c, "id")
+	if !ok {
+		return
+	}
 
-	var req clustergroup.ClusterGroupRequest
+	var req clustergroup.ClusterGroupCreateUpdateRequest
 	if err := c.BindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, pkgCommon.ErrorResponse{
 			Code:    http.StatusBadRequest,
@@ -238,8 +251,7 @@ func (n *ClusterGroupAPI) UpdateClusterGroup(c *gin.Context) {
 	orgId := auth.GetCurrentOrganization(c.Request).ID
 
 	cgModel, err := n.clusterGroupManager.FindOne(cgroup.ClusterGroupModel{
-		OrganizationID: orgId,
-		Name:           req.Name,
+		ID: clusterGroupId,
 	})
 
 	if err != nil {
@@ -249,9 +261,8 @@ func (n *ClusterGroupAPI) UpdateClusterGroup(c *gin.Context) {
 	}
 
 	existingClusterGroup := n.clusterGroupManager.GetClusterGroupFromModel(ctx, cgModel, false)
+	newMembers := make(map[uint]cluster.CommonCluster, 0)
 
-	memberClusterModels := make([]cgroup.MemberClusterModel, 0)
-	joiningMembers := make(map[string]cluster.CommonCluster, 0)
 	for _, clusterName := range req.Members {
 		cluster, err := n.clusterGetter.GetClusterByName(ctx, orgId, clusterName)
 		if err != nil {
@@ -262,61 +273,27 @@ func (n *ClusterGroupAPI) UpdateClusterGroup(c *gin.Context) {
 		}
 		clusterIsReady, err := cluster.IsReady()
 		if err == nil && clusterIsReady {
-			log.Infof(clusterName)
-			memberClusterModels = append(memberClusterModels, cgroup.MemberClusterModel{
-				ClusterID: cluster.GetID(),
-			})
-		}
-
-		if !existingClusterGroup.IsMember(clusterName) {
-			joiningMembers[clusterName] = cluster
+			log.Infof("Join cluster %s to group: %s", clusterName, existingClusterGroup.Name)
+			newMembers[cluster.GetID()] = cluster
+		} else {
+			log.Infof("Can't join cluster %s to group: %s as it not ready!", clusterName, existingClusterGroup.Name)
 		}
 	}
-	if len(memberClusterModels) == 0 {
-		err := errors.New("No ready cluster members found.")
-		c.JSON(http.StatusBadRequest, pkgCommon.ErrorResponse{
-			Code:    http.StatusBadRequest,
-			Message: "No ready cluster members found.",
-			Error:   err.Error(),
-		})
-		return
-	}
 
-	cgModel.Name = req.Name
-	cgModel.Members = memberClusterModels
-
-	err = n.db.Save(cgModel).Error
+	existingClusterGroup, err = n.clusterGroupManager.UpdateClusterGroup(ctx, existingClusterGroup, req.Name, newMembers)
 	if err != nil {
 		errorHandler.Handle(err)
 		ginutils.ReplyWithErrorResponse(c, errorResponseFrom(err))
 		return
 	}
 
-	//call feature handlers on members update
-	enabledFeatures, err := n.clusterGroupManager.GetEnabledFeatureHandlers(*existingClusterGroup)
+	// call feature handlers on members update
+	err = n.clusterGroupManager.ReconcileFeatureHandlers(*existingClusterGroup)
 	if err != nil {
 		errorHandler.Handle(err)
 		ginutils.ReplyWithErrorResponse(c, errorResponseFrom(err))
 		return
 	}
-
-	if len(joiningMembers) > 0 {
-		for _, member := range joiningMembers {
-			for _, feature := range enabledFeatures {
-				err = feature.JoinCluster(member)
-			}
-		}
-	}
-
-	leavingMembers := getLeavingMembers(existingClusterGroup, req.Members)
-	if len(leavingMembers) > 0 {
-		for _, member := range leavingMembers {
-			for _, feature := range enabledFeatures {
-				err = feature.LeaveCluster(member)
-			}
-		}
-	}
-
 }
 
 func (n *ClusterGroupAPI) GetFeature(c *gin.Context) {
@@ -348,9 +325,18 @@ func (n *ClusterGroupAPI) GetFeature(c *gin.Context) {
 
 	var response clustergroup.ClusterGroupFeatureResponse
 	response.Enabled = feature.Enabled
-	response.Properties = feature.Params
+	response.Properties = feature.Properties
 
-	//TODO call feature handler to get statuses
+	//call feature handler to get statuses
+	if feature.Enabled {
+		status, err := n.clusterGroupManager.GetFeatureStatus(*feature)
+		if err != nil {
+			errorHandler.Handle(err)
+			ginutils.ReplyWithErrorResponse(c, errorResponseFrom(err))
+			return
+		}
+		response.Status = status
+	}
 
 	c.JSON(http.StatusOK, response)
 }
@@ -382,16 +368,26 @@ func (n *ClusterGroupAPI) SetFeature(c *gin.Context) {
 		ginutils.ReplyWithErrorResponse(c, errorResponseFrom(err))
 		return
 	}
+	if cgModel == nil {
+		msg := fmt.Sprintf("cluster group with id: %v not found", clusterGroupId)
+		c.JSON(http.StatusBadRequest, pkgCommon.ErrorResponse{
+			Code:    http.StatusBadRequest,
+			Message: msg,
+			Error:   msg,
+		})
+		return
+	}
 	cg := n.clusterGroupManager.GetClusterGroupFromModel(ctx, cgModel, false)
-
 	featureName := c.Param("featureName")
-	feature, err := n.clusterGroupManager.GetFeature(*cg, featureName)
+
+	err = n.clusterGroupManager.SetFeatureParams(featureName, cg, req.Enabled, req.Properties)
 	if err != nil {
 		errorHandler.Handle(err)
 		ginutils.ReplyWithErrorResponse(c, errorResponseFrom(err))
 		return
 	}
-	err = n.clusterGroupManager.SetFeatureParams(*feature, req.Enabled, req.Properties)
+
+	err = n.clusterGroupManager.ReconcileFeatureHandlers(*cg)
 	if err != nil {
 		errorHandler.Handle(err)
 		ginutils.ReplyWithErrorResponse(c, errorResponseFrom(err))
@@ -535,6 +531,11 @@ func (n *ClusterGroupAPI) CreateDeployment(c *gin.Context) {
 	}
 
 	cgDeployment, err := parseDeploymentRequest(c, clusterGroup)
+	if err != nil {
+		errorHandler.Handle(err)
+		ginutils.ReplyWithErrorResponse(c, errorResponseFrom(err))
+		return
+	}
 
 	if len(strings.TrimSpace(cgDeployment.DeploymentReleaseName)) == 0 {
 		cgDeployment.DeploymentReleaseName, _ = helm.GenerateName("")
