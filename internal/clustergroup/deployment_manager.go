@@ -15,6 +15,7 @@
 package clustergroup
 
 import (
+	"encoding/json"
 	"fmt"
 
 	"github.com/banzaicloud/pipeline/cluster"
@@ -25,6 +26,7 @@ import (
 	"github.com/jinzhu/gorm"
 	"github.com/sirupsen/logrus"
 	k8sHelm "k8s.io/helm/pkg/helm"
+	helm_env "k8s.io/helm/pkg/helm/environment"
 )
 
 // CGDeploymentManager
@@ -50,7 +52,7 @@ func NewCGDeploymentManager(
 	}
 }
 
-func (m CGDeploymentManager) installDeploymentOnCluster(commonCluster cluster.CommonCluster, orgName string, cgDeployment *clustergroup.ClusterGroupDeployment) error {
+func (m CGDeploymentManager) installDeploymentOnCluster(commonCluster cluster.CommonCluster, orgName string, env helm_env.EnvSettings, cgDeployment *clustergroup.ClusterGroupDeployment) error {
 	m.logger.Infof("Installing deployment on %s", commonCluster.GetName())
 	k8sConfig, err := commonCluster.GetK8sConfig()
 	if err != nil {
@@ -86,7 +88,7 @@ func (m CGDeploymentManager) installDeploymentOnCluster(commonCluster cluster.Co
 		cgDeployment.DryRun,
 		nil,
 		k8sConfig,
-		helm.GenerateHelmRepoEnv(orgName),
+		env,
 		installOptions...,
 	)
 	if err != nil {
@@ -117,7 +119,62 @@ func (m CGDeploymentManager) getClusterDeploymentStatus(commonCluster cluster.Co
 	return "unknown", nil
 }
 
-func (m CGDeploymentManager) CreateDeployment(clusterGroup *clustergroup.ClusterGroup, orgName string, cgDeployment *clustergroup.ClusterGroupDeployment) []clustergroup.DeploymentStatus {
+func (m CGDeploymentManager) createDeploymentModel(clusterGroup *clustergroup.ClusterGroup, orgName string, cgDeployment *clustergroup.ClusterGroupDeployment) (*ClusterGroupDeploymentModel, error) {
+	deploymentModel := &ClusterGroupDeploymentModel{
+		ClusterGroupID:        clusterGroup.Id,
+		DeploymentName:        cgDeployment.Name,
+		DeploymentVersion:     cgDeployment.Version,
+		DeploymentPackage:     cgDeployment.Package,
+		DeploymentReleaseName: cgDeployment.ReleaseName,
+		ReUseValues:           cgDeployment.ReUseValues,
+		Namespace:             cgDeployment.Namespace,
+		OrganizationName:      orgName,
+		Wait:                  cgDeployment.Wait,
+		Timeout:               cgDeployment.Timeout,
+	}
+	values, err := json.Marshal(cgDeployment.Values)
+	if err != nil {
+		return nil, err
+	}
+	deploymentModel.Values = values
+	deploymentModel.ValueOverrides = make([]DeploymentValueOverrides, 0)
+	for clusterName, cluster := range clusterGroup.MemberClusters {
+		valueOverrideModel := DeploymentValueOverrides{
+			ClusterID: cluster.GetID(),
+		}
+		if valuesOverride, ok := cgDeployment.ValueOverrides[clusterName]; ok {
+			marshalledValues, err := json.Marshal(valuesOverride)
+			if err != nil {
+				return nil, err
+			}
+			valueOverrideModel.Values = marshalledValues
+		}
+		deploymentModel.ValueOverrides = append(deploymentModel.ValueOverrides, valueOverrideModel)
+	}
+
+	return deploymentModel, nil
+}
+
+func (m CGDeploymentManager) CreateDeployment(clusterGroup *clustergroup.ClusterGroup, orgName string, cgDeployment *clustergroup.ClusterGroupDeployment) ([]clustergroup.DeploymentStatus, error) {
+
+	env := helm.GenerateHelmRepoEnv(orgName)
+	_, err := helm.GetRequestedChart(cgDeployment.ReleaseName, cgDeployment.Name, cgDeployment.Version, cgDeployment.Package, env)
+	if err != nil {
+		return nil, fmt.Errorf("error loading chart: %v", err)
+	}
+	//TODO use already downloaded chart at install
+
+	// save deployment
+	deploymentModel, err := m.createDeploymentModel(clusterGroup, orgName, cgDeployment)
+	if err != nil {
+		return nil, emperror.Wrap(err, "Error creating deployment model")
+	}
+	err = m.repository.Save(deploymentModel)
+	if err != nil {
+		return nil, emperror.Wrap(err, "Error saving deployment model")
+	}
+
+	// install charts on cluster group members
 	targetClusterStatus := make([]clustergroup.DeploymentStatus, 0)
 	deploymentCount := 0
 	statusChan := make(chan clustergroup.DeploymentStatus)
@@ -126,7 +183,7 @@ func (m CGDeploymentManager) CreateDeployment(clusterGroup *clustergroup.Cluster
 	for _, commonCluster := range clusterGroup.MemberClusters {
 		deploymentCount++
 		go func(commonCluster cluster.CommonCluster, cgDeployment *clustergroup.ClusterGroupDeployment) {
-			clerr := m.installDeploymentOnCluster(commonCluster, orgName, cgDeployment)
+			clerr := m.installDeploymentOnCluster(commonCluster, orgName, env, cgDeployment)
 			status := "SUCCEEDED"
 			if clerr != nil {
 				status = fmt.Sprintf("FAILED: %s", clerr.Error())
@@ -146,10 +203,51 @@ func (m CGDeploymentManager) CreateDeployment(clusterGroup *clustergroup.Cluster
 		targetClusterStatus = append(targetClusterStatus, status)
 	}
 
-	return targetClusterStatus
+	return targetClusterStatus, nil
 }
 
-func (m CGDeploymentManager) GetDeployment(clusterGroup *clustergroup.ClusterGroup, deploymentName string) []clustergroup.DeploymentStatus {
+func (m CGDeploymentManager) GetDeployment(clusterGroup *clustergroup.ClusterGroup, deploymentName string) (*clustergroup.GetDeploymentResponse, error) {
+
+	deploymentModel, err := m.repository.FindByName(clusterGroup.Id, deploymentName)
+	if err != nil {
+		// TODO create deploymentNotFound error
+		//if gorm.IsRecordNotFoundError(err) {
+		//	return nil, nil
+		//}
+		return nil, err
+	}
+
+	deployment := &clustergroup.GetDeploymentResponse{
+		ReleaseName:  deploymentModel.DeploymentReleaseName,
+		Chart:        "",
+		ChartName:    deploymentModel.DeploymentName,
+		ChartVersion: deploymentModel.DeploymentVersion,
+		Namespace:    deploymentModel.Namespace,
+		Version:      0, //deploymentModel.DeploymentVersion ,
+		Description:  "",
+		CreatedAt:    deploymentModel.CreatedAt,
+		Updated:      deploymentModel.UpdatedAt,
+	}
+	values := make(map[string]interface{}, 0)
+	err = json.Unmarshal(deploymentModel.Values, values)
+	if err != nil {
+		return nil, err
+	}
+	deployment.Values = values
+
+	deployment.ValueOverrides = make(map[string]interface{}, 0)
+	for clusterID, valueOverrides := range deploymentModel.ValueOverrides {
+		if len(valueOverrides.Values) > 0 {
+			var unmarshalledValues interface{}
+			err = json.Unmarshal(valueOverrides.Values, unmarshalledValues)
+			if err != nil {
+				return nil, err
+			}
+			deployment.ValueOverrides[fmt.Sprintf("%v", clusterID)] = unmarshalledValues
+		}
+	}
+
+	// get deployment status for each cluster group member
 	targetClusterStatus := make([]clustergroup.DeploymentStatus, 0)
 
 	deploymentCount := 0
@@ -176,6 +274,35 @@ func (m CGDeploymentManager) GetDeployment(clusterGroup *clustergroup.ClusterGro
 		status := <-statusChan
 		targetClusterStatus = append(targetClusterStatus, status)
 	}
+	deployment.TargetClusters = targetClusterStatus
 
-	return targetClusterStatus
+	return deployment, nil
+}
+
+func (m CGDeploymentManager) GetAllDeployments(clusterGroup *clustergroup.ClusterGroup) ([]*clustergroup.ListDeploymentResponse, error) {
+
+	deploymentModels, err := m.repository.FindAll(clusterGroup.Id)
+	if err != nil {
+		// TODO create deploymentNotFound error
+		//if gorm.IsRecordNotFoundError(err) {
+		//	return nil, nil
+		//}
+		return nil, err
+	}
+	resultList := make([]*clustergroup.ListDeploymentResponse, 0)
+	for _, deploymentModel := range deploymentModels {
+		deployment := &clustergroup.ListDeploymentResponse{
+			Name:         deploymentModel.DeploymentReleaseName,
+			Chart:        "",
+			ChartName:    deploymentModel.DeploymentName,
+			ChartVersion: deploymentModel.DeploymentVersion,
+			Namespace:    deploymentModel.Namespace,
+			Version:      0, //deploymentModel.DeploymentVersion ,
+			CreatedAt:    deploymentModel.CreatedAt,
+		}
+		resultList = append(resultList, deployment)
+
+	}
+
+	return resultList, nil
 }

@@ -333,7 +333,11 @@ func (n *ClusterGroupAPI) CreateDeployment(c *gin.Context) {
 		deployment.ReleaseName, _ = helm.GenerateName("")
 	}
 
-	targetClusterStatus := n.deploymentManager.CreateDeployment(clusterGroup, organization.Name, deployment)
+	targetClusterStatus, err := n.deploymentManager.CreateDeployment(clusterGroup, organization.Name, deployment)
+	if err != nil {
+		n.errorHandler.Handle(c, err)
+		return
+	}
 
 	n.logger.Debug("Release name: ", deployment.ReleaseName)
 	response := clustergroup.CreateUpdateDeploymentResponse{
@@ -363,10 +367,10 @@ func (n *ClusterGroupAPI) GetDeployment(c *gin.Context) {
 		return
 	}
 
-	targetClusterStatus := n.deploymentManager.GetDeployment(clusterGroup, name)
-	response := clustergroup.GetDeploymentResponse{
-		ReleaseName:    name,
-		TargetClusters: targetClusterStatus,
+	response, err := n.deploymentManager.GetDeployment(clusterGroup, name)
+	if err != nil {
+		n.errorHandler.Handle(c, err)
+		return
 	}
 
 	c.JSON(http.StatusOK, response)
@@ -374,18 +378,36 @@ func (n *ClusterGroupAPI) GetDeployment(c *gin.Context) {
 
 // ListDeployments
 func (n *ClusterGroupAPI) ListDeployments(c *gin.Context) {
-	c.JSON(http.StatusCreated, "")
-	return
+	ctx := ginutils.Context(context.Background(), c)
+
+	clusterGroupId, ok := ginutils.UintParam(c, "id")
+	if !ok {
+		return
+	}
+
+	clusterGroup, err := n.clusterGroupManager.GetClusterGroupById(ctx, clusterGroupId)
+	if err != nil {
+		n.errorHandler.Handle(c, err)
+		return
+	}
+
+	response, err := n.deploymentManager.GetAllDeployments(clusterGroup)
+	if err != nil {
+		n.errorHandler.Handle(c, err)
+		return
+	}
+
+	c.JSON(http.StatusOK, response)
 }
 
 // DeleteDeployment
 func (n *ClusterGroupAPI) DeleteDeployment(c *gin.Context) {
-	c.JSON(http.StatusCreated, "")
+	c.JSON(http.StatusAccepted, "")
 	return
 }
 
 // UpdateDeployment
 func (n *ClusterGroupAPI) UpgradeDeployment(c *gin.Context) {
-	c.JSON(http.StatusCreated, "")
+	c.JSON(http.StatusAccepted, "")
 	return
 }

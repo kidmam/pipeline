@@ -41,12 +41,12 @@ type ClusterGroupDeploymentModel struct {
 	DeploymentVersion     string
 	DeploymentPackage     []byte
 	DeploymentReleaseName string
-	ReuseValues           bool
+	ReUseValues           bool
 	Namespace             string
-	Values                []byte
 	OrganizationName      string
 	Wait                  bool
 	Timeout               int64
+	Values                []byte
 	ValueOverrides        []DeploymentValueOverrides `gorm:"foreignkey:ClusterGroupDeploymentID"`
 }
 

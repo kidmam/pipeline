@@ -28,17 +28,15 @@ type CGDeploymentRepository struct {
 }
 
 // FindByName returns a cluster group deployment by name.
-func (g *CGDeploymentRepository) FindByName(deploymentName string) (*ClusterGroupDeploymentModel, error) {
+func (g *CGDeploymentRepository) FindByName(clusterGroupID uint, deploymentName string) (*ClusterGroupDeploymentModel, error) {
 	if len(deploymentName) == 0 {
 		return nil, errors.New("deployment name is required")
 	}
 	var result ClusterGroupDeploymentModel
 	err := g.db.Where(ClusterGroupDeploymentModel{
-		DeploymentName: deploymentName,
+		ClusterGroupID:        clusterGroupID,
+		DeploymentReleaseName: deploymentName,
 	}).Preload("ValueOverrides").First(&result).Error
-	if gorm.IsRecordNotFoundError(err) {
-		return nil, nil
-	}
 	if err != nil {
 		return nil, emperror.With(err,
 			"deploymentName", deploymentName,
@@ -49,13 +47,19 @@ func (g *CGDeploymentRepository) FindByName(deploymentName string) (*ClusterGrou
 }
 
 // FindAll returns all cluster group deployments
-func (g *CGDeploymentRepository) FindAll() ([]*ClusterGroupDeploymentModel, error) {
+func (g *CGDeploymentRepository) FindAll(clusterGroupID uint) ([]*ClusterGroupDeploymentModel, error) {
 	var deployments []*ClusterGroupDeploymentModel
 
-	err := g.db.Preload("ValueOverrides").Find(&deployments).Error
+	err := g.db.Preload("ValueOverrides").Find(&deployments).Where(&ClusterGroupDeploymentModel{
+		ClusterGroupID: clusterGroupID,
+	}).Error
 	if err != nil {
 		return nil, errors.Wrap(err, "could not fetch cluster group deployments")
 	}
 
 	return deployments, nil
+}
+
+func (g *CGDeploymentRepository) Save(model *ClusterGroupDeploymentModel) error {
+	return g.db.Save(model).Error
 }

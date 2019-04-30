@@ -50,33 +50,33 @@ type DeploymentStatus struct {
 
 // GetDeploymentResponse describes the details of a helm deployment
 type GetDeploymentResponse struct {
-	ReleaseName    string                            `json:"releaseName"`
-	Chart          string                            `json:"chart"`
-	ChartName      string                            `json:"chartName"`
-	ChartVersion   string                            `json:"chartVersion"`
-	Namespace      string                            `json:"namespace"`
-	Version        int32                             `json:"version"`
-	Description    string                            `json:"description"`
-	CreatedAt      time.Time                         `json:"createdAt,omitempty"`
-	Updated        time.Time                         `json:"updatedAt,omitempty"`
-	Values         map[string]interface{}            `json:"values"`
-	ValueOverrides map[string]map[string]interface{} `json:"valueOverrides,omitempty" yaml:"valueOverrides,omitempty"`
-	TargetClusters []DeploymentStatus                `json:"targetClusters"`
+	ReleaseName    string                 `json:"releaseName"`
+	Chart          string                 `json:"chart"`
+	ChartName      string                 `json:"chartName"`
+	ChartVersion   string                 `json:"chartVersion"`
+	Namespace      string                 `json:"namespace"`
+	Version        int32                  `json:"version"`
+	Description    string                 `json:"description"`
+	CreatedAt      time.Time              `json:"createdAt,omitempty"`
+	Updated        time.Time              `json:"updatedAt,omitempty"`
+	Values         interface{}            `json:"values"`
+	ValueOverrides map[string]interface{} `json:"valueOverrides,omitempty" yaml:"valueOverrides,omitempty"`
+	TargetClusters []DeploymentStatus     `json:"targetClusters"`
 }
 
 // ListDeploymentResponse describes a deployment list response
 type ListDeploymentResponse struct {
-	Name           string             `json:"releaseName"`
-	Chart          string             `json:"chart"`
-	ChartName      string             `json:"chartName"`
-	ChartVersion   string             `json:"chartVersion"`
-	Version        int32              `json:"version"`
-	UpdatedAt      time.Time          `json:"updatedAt"`
-	Namespace      string             `json:"namespace"`
-	CreatedAt      time.Time          `json:"createdAt,omitempty"`
-	Supported      bool               `json:"supported"`
-	WhiteListed    bool               `json:"whiteListed"`
-	Rejected       bool               `json:"rejected"`
+	Name         string    `json:"releaseName"`
+	Chart        string    `json:"chart"`
+	ChartName    string    `json:"chartName"`
+	ChartVersion string    `json:"chartVersion"`
+	Version      int32     `json:"version"`
+	UpdatedAt    time.Time `json:"updatedAt"`
+	Namespace    string    `json:"namespace"`
+	CreatedAt    time.Time `json:"createdAt,omitempty"`
+	//Supported      bool               `json:"supported"`
+	//WhiteListed    bool               `json:"whiteListed"`
+	//Rejected       bool               `json:"rejected"`
 	TargetClusters []DeploymentStatus `json:"targetClusters"`
 }
 
