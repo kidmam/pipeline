@@ -160,7 +160,7 @@ func (n *ClusterGroupAPI) CreateClusterGroup(c *gin.Context) {
 		return
 	}
 
-	c.JSON(http.StatusAccepted, clustergroup.ClusterGroupCreateResponse{
+	c.JSON(http.StatusCreated, clustergroup.ClusterGroupCreateResponse{
 		Name:       req.Name,
 		ResourceID: *id,
 	})
