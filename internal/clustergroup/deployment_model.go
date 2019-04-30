@@ -14,9 +14,24 @@
 
 package clustergroup
 
-import "time"
+import (
+	"time"
+)
 
-type ClusterGroupDeployment struct {
+const clusterGroupDeploymentTableName = "clustergroup_deployments"
+const clusterGroupDeploymentOverridesTableName = "clustergroup_deployment_overrides"
+
+// TableName changes the default table name.
+func (ClusterGroupDeploymentModel) TableName() string {
+	return clusterGroupDeploymentTableName
+}
+
+// TableName changes the default table name.
+func (DeploymentValueOverrides) TableName() string {
+	return clusterGroupDeploymentOverridesTableName
+}
+
+type ClusterGroupDeploymentModel struct {
 	ID                    uint `gorm:"primary_key"`
 	ClusterGroupID        uint
 	CreatedAt             time.Time

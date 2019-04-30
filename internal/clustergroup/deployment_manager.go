@@ -15,48 +15,177 @@
 package clustergroup
 
 import (
+	"fmt"
+
+	"github.com/banzaicloud/pipeline/cluster"
+	"github.com/banzaicloud/pipeline/helm"
+	"github.com/banzaicloud/pipeline/pkg/clustergroup"
+	"github.com/ghodss/yaml"
 	"github.com/goph/emperror"
 	"github.com/jinzhu/gorm"
-	"github.com/pkg/errors"
 	"github.com/sirupsen/logrus"
+	k8sHelm "k8s.io/helm/pkg/helm"
 )
 
-// Manager
+// CGDeploymentManager
 type CGDeploymentManager struct {
-	db           *gorm.DB
+	repository   *CGDeploymentRepository
 	logger       logrus.FieldLogger
 	errorHandler emperror.Handler
 }
 
-// FindByName returns a cluster group deployment by name.
-func (g *CGDeploymentManager) FindByName(deploymentName string) (*ClusterGroupDeployment, error) {
-	if len(deploymentName) == 0 {
-		return nil, errors.New("deployment name is required")
+// NewCGDeploymentManager returns a new CGDeploymentManager instance.
+func NewCGDeploymentManager(
+	db *gorm.DB,
+	logger logrus.FieldLogger,
+	errorHandler emperror.Handler,
+) *CGDeploymentManager {
+	return &CGDeploymentManager{
+		repository: &CGDeploymentRepository{
+			db:     db,
+			logger: logger,
+		},
+		logger:       logger,
+		errorHandler: errorHandler,
 	}
-	var result ClusterGroupDeployment
-	err := g.db.Where(ClusterGroupDeployment{
-		DeploymentName: deploymentName,
-	}).Preload("ValueOverrides").First(&result).Error
-	if gorm.IsRecordNotFoundError(err) {
-		return nil, nil
-	}
-	if err != nil {
-		return nil, emperror.With(err,
-			"deploymentName", deploymentName,
-		)
-	}
-
-	return &result, nil
 }
 
-// FindAll returns all cluster group deployments
-func (g *CGDeploymentManager) FindAll() ([]*ClusterGroupDeployment, error) {
-	var deployments []*ClusterGroupDeployment
-
-	err := g.db.Preload("ValueOverrides").Find(&deployments).Error
+func (m CGDeploymentManager) installDeploymentOnCluster(commonCluster cluster.CommonCluster, cgDeployment *clustergroup.ClusterGroupDeployment) error {
+	m.logger.Infof("Installing deployment on %s", commonCluster.GetName())
+	k8sConfig, err := commonCluster.GetK8sConfig()
 	if err != nil {
-		return nil, errors.Wrap(err, "could not fetch cluster group deployments")
+		return err
 	}
 
-	return deployments, nil
+	convertedValues := cgDeployment.Values
+	clusterSpecificOverrides, exists := cgDeployment.ValueOverrides[commonCluster.GetName()]
+	// merge values with overrides for cluster if any
+	if exists {
+		values := make(map[string]interface{})
+		err := yaml.Unmarshal(cgDeployment.Values, &values)
+		if err != nil {
+			return err
+		}
+		overrideValues := make(map[string]interface{})
+		err = yaml.Unmarshal(clusterSpecificOverrides, &overrideValues)
+		if err != nil {
+			return err
+		}
+		values = helm.MergeValues(values, overrideValues)
+		convertedValues, err = yaml.Marshal(values)
+		if err != nil {
+			return err
+		}
+	}
+
+	installOptions := []k8sHelm.InstallOption{
+		k8sHelm.InstallWait(cgDeployment.Wait),
+		k8sHelm.ValueOverrides(convertedValues),
+	}
+
+	if cgDeployment.Timeout > 0 {
+		installOptions = append(installOptions, k8sHelm.InstallTimeout(cgDeployment.Timeout))
+	}
+
+	release, err := helm.CreateDeployment(
+		cgDeployment.DeploymentName,
+		cgDeployment.DeploymentVersion,
+		cgDeployment.DeploymentPackage,
+		cgDeployment.Namespace,
+		cgDeployment.DeploymentReleaseName,
+		cgDeployment.DryRun,
+		nil,
+		k8sConfig,
+		helm.GenerateHelmRepoEnv(cgDeployment.OrganizationName),
+		installOptions...,
+	)
+	if err != nil {
+		//TODO distinguish error codes
+		return err
+	}
+	m.logger.Infof("Installing deployment on %s succeeded: %s", commonCluster.GetName(), release.String())
+	return nil
+}
+
+func (m CGDeploymentManager) getClusterDeploymentStatus(commonCluster cluster.CommonCluster, name string) (string, error) {
+	m.logger.Infof("Installing deployment on %s", commonCluster.GetName())
+	k8sConfig, err := commonCluster.GetK8sConfig()
+	if err != nil {
+		return "", err
+	}
+
+	deployments, err := helm.ListDeployments(&name, "", k8sConfig)
+	if err != nil {
+		m.logger.Errorf("ListDeployments for '%s' failed due to: %s", name, err.Error())
+		return "", err
+	}
+	for _, release := range deployments.GetReleases() {
+		if release.Name == name {
+			return release.Info.Status.Code.String(), nil
+		}
+	}
+	return "unknown", nil
+}
+
+func (m CGDeploymentManager) CreateDeployment(clusterGroup *clustergroup.ClusterGroup, cgDeployment *clustergroup.ClusterGroupDeployment) []clustergroup.DeploymentStatus {
+	targetClusterStatus := make([]clustergroup.DeploymentStatus, 0)
+	deploymentCount := 0
+	statusChan := make(chan clustergroup.DeploymentStatus)
+	defer close(statusChan)
+
+	for _, commonCluster := range clusterGroup.MemberClusters {
+		deploymentCount++
+		go func(commonCluster cluster.CommonCluster, cgDeployment *clustergroup.ClusterGroupDeployment) {
+			clerr := m.installDeploymentOnCluster(commonCluster, cgDeployment)
+			status := "SUCCEEDED"
+			if clerr == nil {
+				status = fmt.Sprintf("FAILED: %s", clerr.Error())
+			}
+			statusChan <- clustergroup.DeploymentStatus{
+				ClusterId:   commonCluster.GetID(),
+				ClusterName: commonCluster.GetName(),
+				Status:      status,
+			}
+		}(commonCluster, cgDeployment)
+
+	}
+
+	// wait for goroutines to finish
+	for i := 0; i < deploymentCount; i++ {
+		status := <-statusChan
+		targetClusterStatus = append(targetClusterStatus, status)
+	}
+
+	return targetClusterStatus
+}
+
+func (m CGDeploymentManager) GetDeployment(clusterGroup *clustergroup.ClusterGroup, deploymentName string) []clustergroup.DeploymentStatus {
+	targetClusterStatus := make([]clustergroup.DeploymentStatus, 0)
+
+	deploymentCount := 0
+	statusChan := make(chan clustergroup.DeploymentStatus)
+	defer close(statusChan)
+
+	for _, commonCluster := range clusterGroup.MemberClusters {
+		deploymentCount++
+		go func(commonCluster cluster.CommonCluster, name string) {
+			status, clErr := m.getClusterDeploymentStatus(commonCluster, name)
+			if clErr != nil {
+				status = fmt.Sprintf("Failed to get status: %s", clErr.Error())
+			}
+			statusChan <- clustergroup.DeploymentStatus{
+				ClusterId:   commonCluster.GetID(),
+				ClusterName: commonCluster.GetName(),
+				Status:      status,
+			}
+		}(commonCluster, deploymentName)
+	}
+
+	// wait for goroutines to finish
+	for i := 0; i < deploymentCount; i++ {
+		status := <-statusChan
+		targetClusterStatus = append(targetClusterStatus, status)
+	}
+
+	return targetClusterStatus
 }

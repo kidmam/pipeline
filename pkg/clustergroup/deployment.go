@@ -48,6 +48,22 @@ type DeploymentStatus struct {
 	Status      string `json:"status"`
 }
 
+type ClusterGroupDeployment struct {
+	ClusterGroupId        uint
+	DeploymentName        string
+	DeploymentVersion     string
+	DeploymentPackage     []byte
+	DeploymentReleaseName string
+	ReuseValues           bool
+	Namespace             string
+	Values                []byte
+	ValueOverrides        map[string][]byte
+	OrganizationName      string
+	DryRun                bool
+	Wait                  bool
+	Timeout               int64
+}
+
 // GetDeploymentResponse describes the details of a helm deployment
 type GetDeploymentResponse struct {
 	ReleaseName    string                            `json:"releaseName"`

@@ -94,6 +94,8 @@ func Migrate(db *gorm.DB, logger logrus.FieldLogger) error {
 		&ClusterGroupModel{},
 		&ClusterGroupFeatureModel{},
 		&MemberClusterModel{},
+		&ClusterGroupDeploymentModel{},
+		&DeploymentValueOverrides{},
 	}
 
 	var tableNames string
