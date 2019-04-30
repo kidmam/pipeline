@@ -25,10 +25,8 @@ import (
 	"github.com/banzaicloud/pipeline/internal/platform/gin/utils"
 	"github.com/banzaicloud/pipeline/pkg/clustergroup"
 	pkgCommon "github.com/banzaicloud/pipeline/pkg/common"
-	"github.com/ghodss/yaml"
 	"github.com/gin-gonic/gin"
 	"github.com/goph/emperror"
-	"github.com/pkg/errors"
 	"github.com/sirupsen/logrus"
 )
 
@@ -295,49 +293,6 @@ func (n *ClusterGroupAPI) SetFeature(c *gin.Context) {
 	c.JSON(http.StatusOK, "")
 }
 
-func (n *ClusterGroupAPI) parseDeploymentRequest(c *gin.Context, clusterGroup *clustergroup.ClusterGroup) (*clustergroup.ClusterGroupDeployment, error) {
-	organization, err := auth.GetOrganizationById(clusterGroup.OrganizationID)
-	if err != nil {
-		return nil, errors.Wrap(err, "Error during getting organization. ")
-	}
-	var deployment *clustergroup.CreateUpdateDeploymentRequest
-	err = c.BindJSON(&deployment)
-	if err != nil {
-		return nil, errors.Wrap(err, "Error parsing request:")
-	}
-	n.logger.Debugf("Parsing chart %s with version %s and release name %s", deployment.Name, deployment.Version, deployment.ReleaseName)
-
-	request := clustergroup.ClusterGroupDeployment{
-		OrganizationName:      organization.Name,
-		DeploymentName:        deployment.Name,
-		DeploymentVersion:     deployment.Version,
-		DeploymentPackage:     deployment.Package,
-		DeploymentReleaseName: deployment.ReleaseName,
-		ReuseValues:           deployment.ReUseValues,
-		Namespace:             deployment.Namespace,
-		DryRun:                deployment.DryRun,
-		Wait:                  deployment.Wait,
-		Timeout:               deployment.Timeout,
-		ValueOverrides:        make(map[string][]byte),
-	}
-
-	if deployment.Values != nil {
-		request.Values, err = yaml.Marshal(deployment.Values)
-		if err != nil {
-			return nil, errors.Wrap(err, "Can't parse Values:")
-		}
-	}
-	for clusterName, valueOverrides := range deployment.ValueOverrides {
-		yaml, err := yaml.Marshal(valueOverrides)
-		if err != nil {
-			return nil, errors.Wrapf(err, "Can't parse Values for cluster %s:", clusterName)
-		}
-		request.ValueOverrides[clusterName] = yaml
-	}
-	n.logger.Debug("Custom values: ", string(request.Values))
-	return &request, nil
-}
-
 // CreateDeployment creates a Helm deployment
 func (n *ClusterGroupAPI) CreateDeployment(c *gin.Context) {
 	ctx := ginutils.Context(context.Background(), c)
@@ -354,22 +309,35 @@ func (n *ClusterGroupAPI) CreateDeployment(c *gin.Context) {
 		return
 	}
 
-	cgDeployment, err := n.parseDeploymentRequest(c, clusterGroup)
+	organization, err := auth.GetOrganizationById(clusterGroup.OrganizationID)
 	if err != nil {
-		errorHandler.Handle(err)
-		ginutils.ReplyWithErrorResponse(c, errorResponseFrom(err))
+		c.JSON(http.StatusBadRequest, pkgCommon.ErrorResponse{
+			Code:    http.StatusBadRequest,
+			Message: "Error  getting organization",
+			Error:   err.Error(),
+		})
+		return
+	}
+	var deployment *clustergroup.ClusterGroupDeployment
+	err = c.BindJSON(&deployment)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, pkgCommon.ErrorResponse{
+			Code:    http.StatusBadRequest,
+			Message: "Error parsing request",
+			Error:   err.Error(),
+		})
 		return
 	}
 
-	if len(strings.TrimSpace(cgDeployment.DeploymentReleaseName)) == 0 {
-		cgDeployment.DeploymentReleaseName, _ = helm.GenerateName("")
+	if len(strings.TrimSpace(deployment.ReleaseName)) == 0 {
+		deployment.ReleaseName, _ = helm.GenerateName("")
 	}
 
-	targetClusterStatus := n.deploymentManager.CreateDeployment(clusterGroup, cgDeployment)
+	targetClusterStatus := n.deploymentManager.CreateDeployment(clusterGroup, organization.Name, deployment)
 
-	n.logger.Debug("Release name: ", cgDeployment.DeploymentReleaseName)
+	n.logger.Debug("Release name: ", deployment.ReleaseName)
 	response := clustergroup.CreateUpdateDeploymentResponse{
-		ReleaseName:    cgDeployment.DeploymentReleaseName,
+		ReleaseName:    deployment.ReleaseName,
 		TargetClusters: targetClusterStatus,
 	}
 	c.JSON(http.StatusCreated, response)

@@ -18,14 +18,8 @@ import (
 	"time"
 )
 
-// CreateUpdateDeploymentResponse describes a create/update deployment response
-type CreateUpdateDeploymentResponse struct {
-	ReleaseName    string             `json:"releaseName"`
-	TargetClusters []DeploymentStatus `json:"targetClusters"`
-}
-
-// CreateUpdateDeploymentRequest describes a Helm deployment
-type CreateUpdateDeploymentRequest struct {
+// ClusterGroupDeployment describes a Helm deployment to a Cluster Group
+type ClusterGroupDeployment struct {
 	Name           string                            `json:"name" yaml:"name" binding:"required"`
 	Version        string                            `json:"version,omitempty" yaml:"version,omitempty"`
 	Package        []byte                            `json:"package,omitempty" yaml:"package,omitempty"`
@@ -41,27 +35,17 @@ type CreateUpdateDeploymentRequest struct {
 	Atomic         bool                              `json:"atomic,omitempty" yaml:"atomic,omitempty"`
 }
 
+// CreateUpdateDeploymentResponse describes a create/update deployment response
+type CreateUpdateDeploymentResponse struct {
+	ReleaseName    string             `json:"releaseName"`
+	TargetClusters []DeploymentStatus `json:"targetClusters"`
+}
+
 // DeploymentStatus describes a status of a deployment on a target cluster
 type DeploymentStatus struct {
 	ClusterId   uint   `json:"clusterId"`
 	ClusterName string `json:"clusterName"`
 	Status      string `json:"status"`
-}
-
-type ClusterGroupDeployment struct {
-	ClusterGroupId        uint
-	DeploymentName        string
-	DeploymentVersion     string
-	DeploymentPackage     []byte
-	DeploymentReleaseName string
-	ReuseValues           bool
-	Namespace             string
-	Values                []byte
-	ValueOverrides        map[string][]byte
-	OrganizationName      string
-	DryRun                bool
-	Wait                  bool
-	Timeout               int64
 }
 
 // GetDeploymentResponse describes the details of a helm deployment

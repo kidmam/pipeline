@@ -50,37 +50,27 @@ func NewCGDeploymentManager(
 	}
 }
 
-func (m CGDeploymentManager) installDeploymentOnCluster(commonCluster cluster.CommonCluster, cgDeployment *clustergroup.ClusterGroupDeployment) error {
+func (m CGDeploymentManager) installDeploymentOnCluster(commonCluster cluster.CommonCluster, orgName string, cgDeployment *clustergroup.ClusterGroupDeployment) error {
 	m.logger.Infof("Installing deployment on %s", commonCluster.GetName())
 	k8sConfig, err := commonCluster.GetK8sConfig()
 	if err != nil {
 		return err
 	}
 
-	convertedValues := cgDeployment.Values
+	values := cgDeployment.Values
 	clusterSpecificOverrides, exists := cgDeployment.ValueOverrides[commonCluster.GetName()]
 	// merge values with overrides for cluster if any
 	if exists {
-		values := make(map[string]interface{})
-		err := yaml.Unmarshal(cgDeployment.Values, &values)
-		if err != nil {
-			return err
-		}
-		overrideValues := make(map[string]interface{})
-		err = yaml.Unmarshal(clusterSpecificOverrides, &overrideValues)
-		if err != nil {
-			return err
-		}
-		values = helm.MergeValues(values, overrideValues)
-		convertedValues, err = yaml.Marshal(values)
-		if err != nil {
-			return err
-		}
+		values = helm.MergeValues(cgDeployment.Values, clusterSpecificOverrides)
+	}
+	marshalledValues, err := yaml.Marshal(values)
+	if err != nil {
+		return err
 	}
 
 	installOptions := []k8sHelm.InstallOption{
 		k8sHelm.InstallWait(cgDeployment.Wait),
-		k8sHelm.ValueOverrides(convertedValues),
+		k8sHelm.ValueOverrides(marshalledValues),
 	}
 
 	if cgDeployment.Timeout > 0 {
@@ -88,15 +78,15 @@ func (m CGDeploymentManager) installDeploymentOnCluster(commonCluster cluster.Co
 	}
 
 	release, err := helm.CreateDeployment(
-		cgDeployment.DeploymentName,
-		cgDeployment.DeploymentVersion,
-		cgDeployment.DeploymentPackage,
+		cgDeployment.Name,
+		cgDeployment.Version,
+		cgDeployment.Package,
 		cgDeployment.Namespace,
-		cgDeployment.DeploymentReleaseName,
+		cgDeployment.ReleaseName,
 		cgDeployment.DryRun,
 		nil,
 		k8sConfig,
-		helm.GenerateHelmRepoEnv(cgDeployment.OrganizationName),
+		helm.GenerateHelmRepoEnv(orgName),
 		installOptions...,
 	)
 	if err != nil {
@@ -127,7 +117,7 @@ func (m CGDeploymentManager) getClusterDeploymentStatus(commonCluster cluster.Co
 	return "unknown", nil
 }
 
-func (m CGDeploymentManager) CreateDeployment(clusterGroup *clustergroup.ClusterGroup, cgDeployment *clustergroup.ClusterGroupDeployment) []clustergroup.DeploymentStatus {
+func (m CGDeploymentManager) CreateDeployment(clusterGroup *clustergroup.ClusterGroup, orgName string, cgDeployment *clustergroup.ClusterGroupDeployment) []clustergroup.DeploymentStatus {
 	targetClusterStatus := make([]clustergroup.DeploymentStatus, 0)
 	deploymentCount := 0
 	statusChan := make(chan clustergroup.DeploymentStatus)
@@ -136,9 +126,9 @@ func (m CGDeploymentManager) CreateDeployment(clusterGroup *clustergroup.Cluster
 	for _, commonCluster := range clusterGroup.MemberClusters {
 		deploymentCount++
 		go func(commonCluster cluster.CommonCluster, cgDeployment *clustergroup.ClusterGroupDeployment) {
-			clerr := m.installDeploymentOnCluster(commonCluster, cgDeployment)
+			clerr := m.installDeploymentOnCluster(commonCluster, orgName, cgDeployment)
 			status := "SUCCEEDED"
-			if clerr == nil {
+			if clerr != nil {
 				status = fmt.Sprintf("FAILED: %s", clerr.Error())
 			}
 			statusChan <- clustergroup.DeploymentStatus{
