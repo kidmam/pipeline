@@ -41,7 +41,8 @@ type ClusterGroupDeploymentModel struct {
 	DeploymentVersion     string
 	DeploymentPackage     []byte
 	DeploymentReleaseName string
-	ReUseValues           bool
+	Description           string
+	ChartName             string
 	Namespace             string
 	OrganizationName      string
 	Wait                  bool
@@ -55,5 +56,6 @@ type DeploymentValueOverrides struct {
 	ID                       uint `gorm:"primary_key"`
 	ClusterGroupDeploymentID uint
 	ClusterID                uint
+	ClusterName              string
 	Values                   []byte
 }

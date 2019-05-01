@@ -27,6 +27,7 @@ import (
 	"github.com/sirupsen/logrus"
 	k8sHelm "k8s.io/helm/pkg/helm"
 	helm_env "k8s.io/helm/pkg/helm/environment"
+	"k8s.io/helm/pkg/proto/hapi/chart"
 )
 
 // CGDeploymentManager
@@ -119,14 +120,15 @@ func (m CGDeploymentManager) getClusterDeploymentStatus(commonCluster cluster.Co
 	return "unknown", nil
 }
 
-func (m CGDeploymentManager) createDeploymentModel(clusterGroup *clustergroup.ClusterGroup, orgName string, cgDeployment *clustergroup.ClusterGroupDeployment) (*ClusterGroupDeploymentModel, error) {
+func (m CGDeploymentManager) createDeploymentModel(clusterGroup *clustergroup.ClusterGroup, orgName string, cgDeployment *clustergroup.ClusterGroupDeployment, requestedChart *chart.Chart) (*ClusterGroupDeploymentModel, error) {
 	deploymentModel := &ClusterGroupDeploymentModel{
 		ClusterGroupID:        clusterGroup.Id,
 		DeploymentName:        cgDeployment.Name,
 		DeploymentVersion:     cgDeployment.Version,
 		DeploymentPackage:     cgDeployment.Package,
 		DeploymentReleaseName: cgDeployment.ReleaseName,
-		ReUseValues:           cgDeployment.ReUseValues,
+		Description:           requestedChart.Metadata.Description,
+		ChartName:             requestedChart.Metadata.Name,
 		Namespace:             cgDeployment.Namespace,
 		OrganizationName:      orgName,
 		Wait:                  cgDeployment.Wait,
@@ -140,7 +142,8 @@ func (m CGDeploymentManager) createDeploymentModel(clusterGroup *clustergroup.Cl
 	deploymentModel.ValueOverrides = make([]DeploymentValueOverrides, 0)
 	for clusterName, cluster := range clusterGroup.MemberClusters {
 		valueOverrideModel := DeploymentValueOverrides{
-			ClusterID: cluster.GetID(),
+			ClusterID:   cluster.GetID(),
+			ClusterName: clusterName,
 		}
 		if valuesOverride, ok := cgDeployment.ValueOverrides[clusterName]; ok {
 			marshalledValues, err := json.Marshal(valuesOverride)
@@ -158,14 +161,14 @@ func (m CGDeploymentManager) createDeploymentModel(clusterGroup *clustergroup.Cl
 func (m CGDeploymentManager) CreateDeployment(clusterGroup *clustergroup.ClusterGroup, orgName string, cgDeployment *clustergroup.ClusterGroupDeployment) ([]clustergroup.DeploymentStatus, error) {
 
 	env := helm.GenerateHelmRepoEnv(orgName)
-	_, err := helm.GetRequestedChart(cgDeployment.ReleaseName, cgDeployment.Name, cgDeployment.Version, cgDeployment.Package, env)
+	requestedChart, err := helm.GetRequestedChart(cgDeployment.ReleaseName, cgDeployment.Name, cgDeployment.Version, cgDeployment.Package, env)
 	if err != nil {
 		return nil, fmt.Errorf("error loading chart: %v", err)
 	}
 	//TODO use already downloaded chart at install
 
 	// save deployment
-	deploymentModel, err := m.createDeploymentModel(clusterGroup, orgName, cgDeployment)
+	deploymentModel, err := m.createDeploymentModel(clusterGroup, orgName, cgDeployment, requestedChart)
 	if err != nil {
 		return nil, emperror.Wrap(err, "Error creating deployment model")
 	}
@@ -209,12 +212,12 @@ func (m CGDeploymentManager) CreateDeployment(clusterGroup *clustergroup.Cluster
 func (m CGDeploymentManager) getDeploymentFromModel(deploymentModel *ClusterGroupDeploymentModel) (*clustergroup.GetDeploymentResponse, error) {
 	deployment := &clustergroup.GetDeploymentResponse{
 		ReleaseName:  deploymentModel.DeploymentReleaseName,
-		Chart:        "",
+		Chart:        deploymentModel.DeploymentName,
+		Version:      0, //deploymentModel.DeploymentVersion ,
+		Description:  deploymentModel.Description,
 		ChartName:    deploymentModel.DeploymentName,
 		ChartVersion: deploymentModel.DeploymentVersion,
 		Namespace:    deploymentModel.Namespace,
-		Version:      0, //deploymentModel.DeploymentVersion ,
-		Description:  "",
 		CreatedAt:    deploymentModel.CreatedAt,
 		Updated:      deploymentModel.UpdatedAt,
 	}
@@ -233,7 +236,7 @@ func (m CGDeploymentManager) getDeploymentFromModel(deploymentModel *ClusterGrou
 			if err != nil {
 				return nil, err
 			}
-			deployment.ValueOverrides[fmt.Sprintf("%v", valueOverrides.ClusterID)] = unmarshalledValues
+			deployment.ValueOverrides[valueOverrides.ClusterName] = unmarshalledValues
 		}
 	}
 	return deployment, nil
@@ -250,7 +253,6 @@ func (m CGDeploymentManager) GetDeployment(clusterGroup *clustergroup.ClusterGro
 		return nil, err
 	}
 	deployment, err := m.getDeploymentFromModel(deploymentModel)
-
 
 	// get deployment status for each cluster group member
 	targetClusterStatus := make([]clustergroup.DeploymentStatus, 0)
@@ -298,8 +300,8 @@ func (m CGDeploymentManager) GetAllDeployments(clusterGroup *clustergroup.Cluste
 	for _, deploymentModel := range deploymentModels {
 		deployment := &clustergroup.ListDeploymentResponse{
 			Name:         deploymentModel.DeploymentReleaseName,
-			Chart:        "",
-			ChartName:    deploymentModel.DeploymentName,
+			Chart:        deploymentModel.DeploymentName,
+			ChartName:    deploymentModel.ChartName,
 			ChartVersion: deploymentModel.DeploymentVersion,
 			Namespace:    deploymentModel.Namespace,
 			Version:      0, //deploymentModel.DeploymentVersion ,
