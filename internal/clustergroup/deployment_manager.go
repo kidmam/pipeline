@@ -206,17 +206,7 @@ func (m CGDeploymentManager) CreateDeployment(clusterGroup *clustergroup.Cluster
 	return targetClusterStatus, nil
 }
 
-func (m CGDeploymentManager) GetDeployment(clusterGroup *clustergroup.ClusterGroup, deploymentName string) (*clustergroup.GetDeploymentResponse, error) {
-
-	deploymentModel, err := m.repository.FindByName(clusterGroup.Id, deploymentName)
-	if err != nil {
-		// TODO create deploymentNotFound error
-		//if gorm.IsRecordNotFoundError(err) {
-		//	return nil, nil
-		//}
-		return nil, err
-	}
-
+func (m CGDeploymentManager) getDeploymentFromModel(deploymentModel *ClusterGroupDeploymentModel) (*clustergroup.GetDeploymentResponse, error) {
 	deployment := &clustergroup.GetDeploymentResponse{
 		ReleaseName:  deploymentModel.DeploymentReleaseName,
 		Chart:        "",
@@ -228,24 +218,39 @@ func (m CGDeploymentManager) GetDeployment(clusterGroup *clustergroup.ClusterGro
 		CreatedAt:    deploymentModel.CreatedAt,
 		Updated:      deploymentModel.UpdatedAt,
 	}
-	values := make(map[string]interface{}, 0)
-	err = json.Unmarshal(deploymentModel.Values, values)
+	var values map[string]interface{}
+	err := json.Unmarshal(deploymentModel.Values, &values)
 	if err != nil {
 		return nil, err
 	}
 	deployment.Values = values
 
 	deployment.ValueOverrides = make(map[string]interface{}, 0)
-	for clusterID, valueOverrides := range deploymentModel.ValueOverrides {
+	for _, valueOverrides := range deploymentModel.ValueOverrides {
 		if len(valueOverrides.Values) > 0 {
 			var unmarshalledValues interface{}
-			err = json.Unmarshal(valueOverrides.Values, unmarshalledValues)
+			err = json.Unmarshal(valueOverrides.Values, &unmarshalledValues)
 			if err != nil {
 				return nil, err
 			}
-			deployment.ValueOverrides[fmt.Sprintf("%v", clusterID)] = unmarshalledValues
+			deployment.ValueOverrides[fmt.Sprintf("%v", valueOverrides.ClusterID)] = unmarshalledValues
 		}
 	}
+	return deployment, nil
+}
+
+func (m CGDeploymentManager) GetDeployment(clusterGroup *clustergroup.ClusterGroup, deploymentName string) (*clustergroup.GetDeploymentResponse, error) {
+
+	deploymentModel, err := m.repository.FindByName(clusterGroup.Id, deploymentName)
+	if err != nil {
+		// TODO create deploymentNotFound error
+		//if gorm.IsRecordNotFoundError(err) {
+		//	return nil, nil
+		//}
+		return nil, err
+	}
+	deployment, err := m.getDeploymentFromModel(deploymentModel)
+
 
 	// get deployment status for each cluster group member
 	targetClusterStatus := make([]clustergroup.DeploymentStatus, 0)
