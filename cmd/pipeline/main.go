@@ -44,6 +44,7 @@ import (
 	"github.com/banzaicloud/pipeline/api/ark/schedules"
 	"github.com/banzaicloud/pipeline/api/cluster/namespace"
 	"github.com/banzaicloud/pipeline/api/cluster/pke"
+	cgroupAPI "github.com/banzaicloud/pipeline/api/clustergroup"
 	"github.com/banzaicloud/pipeline/api/common"
 	"github.com/banzaicloud/pipeline/api/middleware"
 	"github.com/banzaicloud/pipeline/auth"
@@ -59,6 +60,8 @@ import (
 	intClusterAuth "github.com/banzaicloud/pipeline/internal/cluster/auth"
 	"github.com/banzaicloud/pipeline/internal/cluster/clustersecret"
 	"github.com/banzaicloud/pipeline/internal/cluster/clustersecret/clustersecretadapter"
+	"github.com/banzaicloud/pipeline/internal/clustergroup"
+	cgroupAdapter "github.com/banzaicloud/pipeline/internal/clustergroup/adapter"
 	"github.com/banzaicloud/pipeline/internal/dashboard"
 	"github.com/banzaicloud/pipeline/internal/monitor"
 	"github.com/banzaicloud/pipeline/internal/notification"
@@ -262,7 +265,7 @@ func main() {
 	}
 	clusterAPI := api.NewClusterAPI(clusterManager, clusterGetter, workflowClient, log, errorHandler, externalBaseURL, clusterCreators, clusterDeleters)
 
-	clusterGroupManager := clustergroup.NewManager(clusterManager, db, log, errorHandler)
+	clusterGroupManager := clustergroup.NewManager(cgroupAdapter.NewClusterGetter(clusterManager), clustergroup.NewClusterGroupRepository(db, logger), log, errorHandler)
 	federationHandler := clustergroup.NewFederationHandler(logger, errorHandler)
 	deploymentManager := clustergroup.NewCGDeploymentManager(db, log, errorHandler)
 	clusterGroupManager.RegisterFeatureHandler(clustergroup.FederationFeatureName, federationHandler)
@@ -439,6 +442,11 @@ func main() {
 				orgs.GET("/:orgid/clusters/:id/imagescan/:imagedigest", api.GetScanResult)
 				orgs.GET("/:orgid/clusters/:id/imagescan/:imagedigest/vuln", api.GetImageVulnerabilities)
 			}
+
+			// ClusterGroupAPI
+			cgroupsAPI := cgroupAPI.New(clusterGroupManager, deploymentManager, log, errorHandler)
+			cgroupsAPI.AddRoutes(orgs.Group("/:orgid/clustergroups"))
+
 			clusters := orgs.Group("/:orgid/clusters/:id")
 
 			clusters.GET("/nodepools/labels", nplsApi.GetNodepoolLabelSets)

@@ -18,22 +18,17 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/banzaicloud/pipeline/cluster"
-	"github.com/banzaicloud/pipeline/pkg/clustergroup"
 	"github.com/goph/emperror"
-	"github.com/jinzhu/gorm"
 	"github.com/pkg/errors"
 	"github.com/sirupsen/logrus"
-)
 
-type ClusterGetter interface {
-	GetClusterByIDOnly(ctx context.Context, clusterID uint) (cluster.CommonCluster, error)
-	GetClusterByName(ctx context.Context, organizationID uint, clusterName string) (cluster.CommonCluster, error)
-}
+	"github.com/banzaicloud/pipeline/internal/clustergroup/adapter"
+	"github.com/banzaicloud/pipeline/pkg/clustergroup"
+)
 
 // Manager
 type Manager struct {
-	clusterGetter     ClusterGetter
+	clusterGetter     adapter.ClusterGetter
 	cgRepo            *ClusterGroupRepository
 	logger            logrus.FieldLogger
 	errorHandler      emperror.Handler
@@ -42,15 +37,15 @@ type Manager struct {
 
 // NewManager returns a new Manager instance.
 func NewManager(
-	clusterGetter ClusterGetter,
-	db *gorm.DB,
+	clusterGetter adapter.ClusterGetter,
+	repository *ClusterGroupRepository,
 	logger logrus.FieldLogger,
 	errorHandler emperror.Handler,
 ) *Manager {
 	featureHandlerMap := make(map[string]ClusterGroupFeatureHandler, 0)
 	return &Manager{
 		clusterGetter:     clusterGetter,
-		cgRepo:            NewClusterGroupRepository(db, logger),
+		cgRepo:            repository,
 		logger:            logger,
 		errorHandler:      errorHandler,
 		featureHandlerMap: featureHandlerMap,
@@ -105,7 +100,7 @@ func (g *Manager) CreateClusterGroup(ctx context.Context, name string, orgID uin
 
 	// enable DeploymentFeature by default on every cluster group
 	deploymentFeature := &ClusterGroupFeatureModel{
-		Enabled:		true,
+		Enabled:        true,
 		Name:           DeploymentFeatureName,
 		ClusterGroupID: *cgId,
 	}
@@ -126,7 +121,7 @@ func (g *Manager) UpdateClusterGroup(ctx context.Context, orgID uint, clusterGro
 	}
 
 	existingClusterGroup := g.GetClusterGroupFromModel(ctx, cgModel, false)
-	newMembers := make(map[uint]cluster.CommonCluster, 0)
+	newMembers := make(map[uint]adapter.Cluster, 0)
 
 	for _, clusterName := range members {
 		cluster, err := g.clusterGetter.GetClusterByName(ctx, orgID, clusterName)
@@ -151,7 +146,7 @@ func (g *Manager) UpdateClusterGroup(ctx context.Context, orgID uint, clusterGro
 	}
 
 	// call feature handlers on members update
-	err = g.ReconcileFeatures(*existingClusterGroup,true)
+	err = g.ReconcileFeatures(*existingClusterGroup, true)
 	if err != nil {
 		return err
 	}
@@ -169,13 +164,11 @@ func (g *Manager) DeleteClusterGroup(ctx context.Context, clusterGroupId uint) e
 	}
 	cgroup := g.GetClusterGroupFromModel(ctx, cgModel, false)
 
-
 	// call feature handlers
 	err = g.DisableFeatures(*cgroup)
 	if err != nil {
 		return err
 	}
-
 
 	return g.cgRepo.Delete(cgModel)
 }
@@ -191,7 +184,7 @@ func (g *Manager) GetClusterGroupFromModel(ctx context.Context, cg *ClusterGroup
 	} else {
 		clusterGroup.Members = make([]string, 0)
 	}
-	clusterGroup.MemberClusters = make(map[string]cluster.CommonCluster, 0)
+	clusterGroup.MemberClusters = make(map[string]adapter.Cluster, 0)
 	for _, m := range cg.Members {
 		cluster, err := g.clusterGetter.GetClusterByIDOnly(ctx, m.ClusterID)
 		if err != nil {

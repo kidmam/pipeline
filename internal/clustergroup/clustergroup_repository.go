@@ -15,12 +15,13 @@
 package clustergroup
 
 import (
-	"github.com/banzaicloud/pipeline/cluster"
-	"github.com/banzaicloud/pipeline/pkg/clustergroup"
 	"github.com/goph/emperror"
 	"github.com/jinzhu/gorm"
 	"github.com/pkg/errors"
 	"github.com/sirupsen/logrus"
+
+	"github.com/banzaicloud/pipeline/internal/clustergroup/adapter"
+	"github.com/banzaicloud/pipeline/pkg/clustergroup"
 )
 
 // ClusterGroupRepository
@@ -88,7 +89,7 @@ func (g *ClusterGroupRepository) Create(name string, orgID uint, memberClusterMo
 	return &clusterGroupModel.ID, nil
 }
 
-func (g *ClusterGroupRepository) UpdateMembers(cgroup *clustergroup.ClusterGroup, name string, newMembers map[uint]cluster.CommonCluster) error {
+func (g *ClusterGroupRepository) UpdateMembers(cgroup *clustergroup.ClusterGroup, name string, newMembers map[uint]adapter.Cluster) error {
 	cgModel, err := g.FindOne(ClusterGroupModel{
 		ID: cgroup.Id,
 	})

@@ -15,7 +15,7 @@
 package clustergroup
 
 import (
-	"github.com/banzaicloud/pipeline/cluster"
+	"github.com/banzaicloud/pipeline/internal/clustergroup/adapter"
 	"github.com/pkg/errors"
 )
 
@@ -45,7 +45,7 @@ type ClusterGroup struct {
 	OrganizationID uint                             `json:"organizationId" yaml:"organizationId"`
 	Members        []string                         `json:"members,omitempty" yaml:"members"`
 	MembersStatus  []MemberClusterStatus            `json:"membersStatus,omitempty" yaml:"membersStatus"`
-	MemberClusters map[string]cluster.CommonCluster `json:"-" yaml:"-"`
+	MemberClusters map[string]adapter.Cluster `json:"-" yaml:"-"`
 }
 
 func (g *ClusterGroup) IsMember(clusterName string) bool {
