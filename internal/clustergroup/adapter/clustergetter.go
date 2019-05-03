@@ -18,42 +18,29 @@ import (
 	"context"
 
 	"github.com/banzaicloud/pipeline/cluster"
-	pkgCluster "github.com/banzaicloud/pipeline/pkg/cluster"
+	"github.com/banzaicloud/pipeline/internal/clustergroup/api"
 	"github.com/pkg/errors"
 )
-
-type ClusterGetter interface {
-	GetClusterByIDOnly(ctx context.Context, clusterID uint) (Cluster, error)
-	GetClusterByName(ctx context.Context, organizationID uint, clusterName string) (Cluster, error)
-}
-
-type Cluster interface {
-	GetID() uint
-	GetName() string
-	GetK8sConfig() ([]byte, error)
-	GetStatus() (*pkgCluster.GetClusterStatusResponse, error)
-	IsReady() (bool, error)
-}
 
 type clusterGetter struct {
 	clusterManager *cluster.Manager
 }
 
 // New creates a new ClusterGetter
-func NewClusterGetter(manager *cluster.Manager) ClusterGetter {
+func NewClusterGetter(manager *cluster.Manager) api.ClusterGetter {
 	return &clusterGetter{
 		clusterManager: manager,
 	}
 }
 
 // GetClusterByName returns the cluster instance for an organization ID by cluster name.
-func (m *clusterGetter) GetClusterByName(ctx context.Context, organizationID uint, clusterName string) (Cluster, error) {
+func (m *clusterGetter) GetClusterByName(ctx context.Context, organizationID uint, clusterName string) (api.Cluster, error) {
 	c, err := m.clusterManager.GetClusterByName(ctx, organizationID, clusterName)
 	if err != nil {
 		return nil, err
 	}
 
-	if cluster, ok := c.(Cluster); ok {
+	if cluster, ok := c.(api.Cluster); ok {
 		return cluster, nil
 	}
 
@@ -61,13 +48,13 @@ func (m *clusterGetter) GetClusterByName(ctx context.Context, organizationID uin
 }
 
 // GetClusterByIDOnly returns the cluster instance by cluster ID.
-func (m *clusterGetter) GetClusterByIDOnly(ctx context.Context, clusterID uint) (Cluster, error) {
+func (m *clusterGetter) GetClusterByIDOnly(ctx context.Context, clusterID uint) (api.Cluster, error) {
 	c, err := m.clusterManager.GetClusterByIDOnly(ctx, clusterID)
 	if err != nil {
 		return nil, err
 	}
 
-	if cluster, ok := c.(Cluster); ok {
+	if cluster, ok := c.(api.Cluster); ok {
 		return cluster, nil
 	}
 

@@ -4,8 +4,8 @@ import (
 	"context"
 	"net/http"
 
+	cgroupIAPI "github.com/banzaicloud/pipeline/internal/clustergroup/api"
 	ginutils "github.com/banzaicloud/pipeline/internal/platform/gin/utils"
-	"github.com/banzaicloud/pipeline/pkg/clustergroup"
 	pkgCommon "github.com/banzaicloud/pipeline/pkg/common"
 	"github.com/gin-gonic/gin"
 )
@@ -13,7 +13,7 @@ import (
 func (n *API) Enable(c *gin.Context) {
 	ctx := ginutils.Context(context.Background(), c)
 
-	var req clustergroup.ClusterGroupFeatureRequest
+	var req cgroupIAPI.FeatureRequest
 	if err := c.BindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, pkgCommon.ErrorResponse{
 			Code:    http.StatusBadRequest,
@@ -36,7 +36,7 @@ func (n *API) Enable(c *gin.Context) {
 
 	featureName := c.Param("featureName")
 
-	err = n.clusterGroupManager.SetFeatureParams(featureName, clusterGroup, req.Enabled, req.Properties)
+	err = n.clusterGroupManager.SetFeatureParams(featureName, clusterGroup, true, req.Properties)
 	if err != nil {
 		n.errorHandler.Handle(c, err)
 		return

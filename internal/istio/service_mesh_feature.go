@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-package clustergroup
+package istio
 
 import (
 	"github.com/goph/emperror"
@@ -21,34 +21,25 @@ import (
 	"github.com/banzaicloud/pipeline/internal/clustergroup/api"
 )
 
-type FederationHandler struct {
+type ServiceMeshFeatureHandler struct {
 	logger       logrus.FieldLogger
 	errorHandler emperror.Handler
 }
 
-const FederationFeatureName = "federation"
-const DeploymentFeatureName = "deployment"
+const FeatureName = "servicemesh"
 
-// NewFederationHandler returns a new FederationHandler instance.
-func NewFederationHandler(
+// NewServiceMeshFeatureHandler returns a new ServiceMeshFeatureHandler instance.
+func NewServiceMeshFeatureHandler(
 	logger logrus.FieldLogger,
 	errorHandler emperror.Handler,
-) *FederationHandler {
-	return &FederationHandler{
+) *ServiceMeshFeatureHandler {
+	return &ServiceMeshFeatureHandler{
 		logger:       logger,
 		errorHandler: errorHandler,
 	}
 }
 
-func (f *FederationHandler) ReconcileState(featureState api.Feature) error {
-	f.logger.Infof("federation enabled %v on group: %v", featureState.Enabled, featureState.ClusterGroup.Name)
+func (h *ServiceMeshFeatureHandler) ReconcileState(featureState api.Feature) error {
+	h.logger.Infof("federation enabled %v on group: %v", featureState.Enabled, featureState.ClusterGroup.Name)
 	return nil
-}
-
-func (f *FederationHandler) GetMembersStatus(featureState api.Feature) (map[string]string, error) {
-	statusMap := make(map[string]string, 0)
-	for _, memberCluster := range featureState.ClusterGroup.MemberClusters {
-		statusMap[memberCluster.GetName()] = "ready"
-	}
-	return statusMap, nil
 }

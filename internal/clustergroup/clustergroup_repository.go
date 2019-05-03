@@ -20,8 +20,7 @@ import (
 	"github.com/pkg/errors"
 	"github.com/sirupsen/logrus"
 
-	"github.com/banzaicloud/pipeline/internal/clustergroup/adapter"
-	"github.com/banzaicloud/pipeline/pkg/clustergroup"
+	"github.com/banzaicloud/pipeline/internal/clustergroup/api"
 )
 
 // ClusterGroupRepository
@@ -89,7 +88,7 @@ func (g *ClusterGroupRepository) Create(name string, orgID uint, memberClusterMo
 	return &clusterGroupModel.ID, nil
 }
 
-func (g *ClusterGroupRepository) UpdateMembers(cgroup *clustergroup.ClusterGroup, name string, newMembers map[uint]adapter.Cluster) error {
+func (g *ClusterGroupRepository) UpdateMembers(cgroup *api.ClusterGroup, name string, newMembers map[uint]api.Cluster) error {
 	cgModel, err := g.FindOne(ClusterGroupModel{
 		ID: cgroup.Id,
 	})

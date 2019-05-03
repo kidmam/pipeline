@@ -7,15 +7,15 @@ import (
 	"github.com/gin-gonic/gin"
 
 	"github.com/banzaicloud/pipeline/auth"
+	cgroupIAPI "github.com/banzaicloud/pipeline/internal/clustergroup/api"
 	ginutils "github.com/banzaicloud/pipeline/internal/platform/gin/utils"
-	"github.com/banzaicloud/pipeline/pkg/clustergroup"
 	pkgCommon "github.com/banzaicloud/pipeline/pkg/common"
 )
 
 func (n *API) Create(c *gin.Context) {
 	ctx := ginutils.Context(context.Background(), c)
 
-	var req clustergroup.ClusterGroupCreateUpdateRequest
+	var req cgroupIAPI.CreateRequest
 	if err := c.BindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, pkgCommon.ErrorResponse{
 			Code:    http.StatusBadRequest,
@@ -33,7 +33,7 @@ func (n *API) Create(c *gin.Context) {
 		return
 	}
 
-	c.JSON(http.StatusCreated, clustergroup.ClusterGroupCreateResponse{
+	c.JSON(http.StatusCreated, cgroupIAPI.CreateResponse{
 		Name:       req.Name,
 		ResourceID: *id,
 	})

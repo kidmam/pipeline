@@ -17,31 +17,22 @@ package clustergroup
 import (
 	"encoding/json"
 
-	cgroup "github.com/banzaicloud/pipeline/pkg/clustergroup"
+	"github.com/banzaicloud/pipeline/internal/clustergroup/api"
 	"github.com/goph/emperror"
 	"github.com/jinzhu/gorm"
 	"github.com/pkg/errors"
-
-	"github.com/banzaicloud/pipeline/pkg/clustergroup"
 )
 
-type ClusterGroupFeature struct {
-	Name         string              `json:"name"`
-	ClusterGroup cgroup.ClusterGroup `json:"clusterGroup"`
-	Enabled      bool                `json:"enabled"`
-	Properties   interface{}         `json:"properties"`
+type FeatureHandler interface {
+	ReconcileState(featureState api.Feature) error
+	GetMembersStatus(featureState api.Feature) (map[string]string, error)
 }
 
-type ClusterGroupFeatureHandler interface {
-	ReconcileState(featureState ClusterGroupFeature) error
-	GetMembersStatus(featureState ClusterGroupFeature) (map[string]string, error)
-}
-
-func (g *Manager) RegisterFeatureHandler(featureName string, handler ClusterGroupFeatureHandler) {
+func (g *Manager) RegisterFeatureHandler(featureName string, handler FeatureHandler) {
 	g.featureHandlerMap[featureName] = handler
 }
 
-func (g *Manager) GetFeatureStatus(feature ClusterGroupFeature) (map[string]string, error) {
+func (g *Manager) GetFeatureStatus(feature api.Feature) (map[string]string, error) {
 	handler, ok := g.featureHandlerMap[feature.Name]
 	if !ok {
 		return nil, nil
@@ -49,8 +40,8 @@ func (g *Manager) GetFeatureStatus(feature ClusterGroupFeature) (map[string]stri
 	return handler.GetMembersStatus(feature)
 }
 
-func (g *Manager) GetEnabledFeatures(clusterGroup clustergroup.ClusterGroup) (map[string]ClusterGroupFeature, error) {
-	enabledFeatures := make(map[string]ClusterGroupFeature, 0)
+func (g *Manager) GetEnabledFeatures(clusterGroup api.ClusterGroup) (map[string]api.Feature, error) {
+	enabledFeatures := make(map[string]api.Feature, 0)
 
 	features, err := g.GetFeatures(clusterGroup)
 	if err != nil {
@@ -66,7 +57,7 @@ func (g *Manager) GetEnabledFeatures(clusterGroup clustergroup.ClusterGroup) (ma
 	return enabledFeatures, nil
 }
 
-func (g *Manager) ReconcileFeatures(clusterGroup clustergroup.ClusterGroup, onlyEnabledHandlers bool) error {
+func (g *Manager) ReconcileFeatures(clusterGroup api.ClusterGroup, onlyEnabledHandlers bool) error {
 	g.logger.Debugf("reconcile features for group: %s", clusterGroup.Name)
 
 	features, err := g.GetFeatures(clusterGroup)
@@ -88,7 +79,7 @@ func (g *Manager) ReconcileFeatures(clusterGroup clustergroup.ClusterGroup, only
 	return nil
 }
 
-func (g *Manager) DisableFeatures(clusterGroup clustergroup.ClusterGroup) error {
+func (g *Manager) DisableFeatures(clusterGroup api.ClusterGroup) error {
 	g.logger.Debugf("disable features for group: %s", clusterGroup.Name)
 
 	features, err := g.GetFeatures(clusterGroup)
@@ -97,7 +88,7 @@ func (g *Manager) DisableFeatures(clusterGroup clustergroup.ClusterGroup) error 
 	}
 
 	for name, feature := range features {
-		if feature.Enabled  {
+		if feature.Enabled {
 			handler := g.featureHandlerMap[name]
 			if handler == nil {
 				g.logger.Debugf("no handler registered for cluster group feature %s", name)
@@ -111,8 +102,8 @@ func (g *Manager) DisableFeatures(clusterGroup clustergroup.ClusterGroup) error 
 	return nil
 }
 
-func (g *Manager) GetFeatures(clusterGroup clustergroup.ClusterGroup) (map[string]ClusterGroupFeature, error) {
-	features := make(map[string]ClusterGroupFeature, 0)
+func (g *Manager) GetFeatures(clusterGroup api.ClusterGroup) (map[string]api.Feature, error) {
+	features := make(map[string]api.Feature, 0)
 
 	results, err := g.cgRepo.GetAllFeatures(clusterGroup.Id)
 	if err != nil {
@@ -127,7 +118,7 @@ func (g *Manager) GetFeatures(clusterGroup clustergroup.ClusterGroup) (map[strin
 	for _, r := range results {
 		var featureProperties interface{}
 		json.Unmarshal(r.Properties, featureProperties)
-		cgFeature := ClusterGroupFeature{
+		cgFeature := api.Feature{
 			Name:         r.Name,
 			Enabled:      r.Enabled,
 			ClusterGroup: clusterGroup,
@@ -140,7 +131,7 @@ func (g *Manager) GetFeatures(clusterGroup clustergroup.ClusterGroup) (map[strin
 }
 
 // GetFeature returns params of a cluster group feature by clusterGroupId and feature name
-func (g *Manager) GetFeature(clusterGroup clustergroup.ClusterGroup, featureName string) (*ClusterGroupFeature, error) {
+func (g *Manager) GetFeature(clusterGroup api.ClusterGroup, featureName string) (*api.Feature, error) {
 
 	result, err := g.cgRepo.GetFeature(clusterGroup.Id, featureName)
 	if err != nil {
@@ -156,7 +147,7 @@ func (g *Manager) GetFeature(clusterGroup clustergroup.ClusterGroup, featureName
 
 	var featureProperties interface{}
 	json.Unmarshal(result.Properties, featureProperties)
-	feature := &ClusterGroupFeature{
+	feature := &api.Feature{
 		ClusterGroup: clusterGroup,
 		Properties:   featureProperties,
 		Name:         featureName,
@@ -167,7 +158,7 @@ func (g *Manager) GetFeature(clusterGroup clustergroup.ClusterGroup, featureName
 }
 
 // SetFeatureParams sets params of a cluster group feature
-func (g *Manager) SetFeatureParams(featureName string, clusterGroup *clustergroup.ClusterGroup, enabled bool, properties interface{}) error {
+func (g *Manager) SetFeatureParams(featureName string, clusterGroup *api.ClusterGroup, enabled bool, properties interface{}) error {
 
 	result, err := g.cgRepo.GetFeature(clusterGroup.Id, featureName)
 	if err != nil && !gorm.IsRecordNotFoundError(err) {

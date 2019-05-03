@@ -4,8 +4,8 @@ import (
 	"context"
 	"net/http"
 
+	cgroupIAPI "github.com/banzaicloud/pipeline/internal/clustergroup/api"
 	ginutils "github.com/banzaicloud/pipeline/internal/platform/gin/utils"
-	"github.com/banzaicloud/pipeline/pkg/clustergroup"
 	"github.com/gin-gonic/gin"
 )
 
@@ -29,7 +29,7 @@ func (n *API) Get(c *gin.Context) {
 		return
 	}
 
-	var response clustergroup.ClusterGroupFeatureResponse
+	var response cgroupIAPI.FeatureResponse
 	response.Enabled = feature.Enabled
 	response.Properties = feature.Properties
 

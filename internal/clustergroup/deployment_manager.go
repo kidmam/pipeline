@@ -28,7 +28,7 @@ import (
 	"k8s.io/helm/pkg/proto/hapi/chart"
 
 	"github.com/banzaicloud/pipeline/helm"
-	"github.com/banzaicloud/pipeline/internal/clustergroup/adapter"
+	"github.com/banzaicloud/pipeline/internal/clustergroup/api"
 	"github.com/banzaicloud/pipeline/pkg/clustergroup"
 	pkgHelm "github.com/banzaicloud/pipeline/pkg/helm"
 )
@@ -56,14 +56,14 @@ func NewCGDeploymentManager(
 	}
 }
 
-func (m *CGDeploymentManager) ReconcileState(featureState ClusterGroupFeature) error {
+func (m *CGDeploymentManager) ReconcileState(featureState api.Feature) error {
 
 	//TODO delete deployment from a cluster leaving the group,, delete all deployments of a group if featureState.Enabled = false
 	m.logger.Infof("reconcile deployments on group: %v", featureState.Enabled, featureState.ClusterGroup.Name)
 	return nil
 }
 
-func (m *CGDeploymentManager) GetMembersStatus(featureState ClusterGroupFeature) (map[string]string, error) {
+func (m *CGDeploymentManager) GetMembersStatus(featureState api.Feature) (map[string]string, error) {
 	statusMap := make(map[string]string, 0)
 	for _, memberCluster := range featureState.ClusterGroup.MemberClusters {
 		statusMap[memberCluster.GetName()] = "ready"
@@ -71,7 +71,7 @@ func (m *CGDeploymentManager) GetMembersStatus(featureState ClusterGroupFeature)
 	return statusMap, nil
 }
 
-func (m CGDeploymentManager) installDeploymentOnCluster(commonCluster adapter.Cluster, orgName string, env helm_env.EnvSettings, cgDeployment *clustergroup.ClusterGroupDeployment, chartRequested *chart.Chart) error {
+func (m CGDeploymentManager) installDeploymentOnCluster(commonCluster api.Cluster, orgName string, env helm_env.EnvSettings, cgDeployment *clustergroup.ClusterGroupDeployment, chartRequested *chart.Chart) error {
 	m.logger.Infof("Installing deployment on %s", commonCluster.GetName())
 	k8sConfig, err := commonCluster.GetK8sConfig()
 	if err != nil {
@@ -124,7 +124,7 @@ func (m CGDeploymentManager) installDeploymentOnCluster(commonCluster adapter.Cl
 	return nil
 }
 
-func (m CGDeploymentManager) getClusterDeploymentStatus(commonCluster adapter.Cluster, name string) (string, error) {
+func (m CGDeploymentManager) getClusterDeploymentStatus(commonCluster api.Cluster, name string) (string, error) {
 	m.logger.Infof("Installing deployment on %s", commonCluster.GetName())
 	k8sConfig, err := commonCluster.GetK8sConfig()
 	if err != nil {
@@ -144,7 +144,7 @@ func (m CGDeploymentManager) getClusterDeploymentStatus(commonCluster adapter.Cl
 	return "unknown", nil
 }
 
-func (m CGDeploymentManager) createDeploymentModel(clusterGroup *clustergroup.ClusterGroup, orgName string, cgDeployment *clustergroup.ClusterGroupDeployment, requestedChart *chart.Chart) (*ClusterGroupDeploymentModel, error) {
+func (m CGDeploymentManager) createDeploymentModel(clusterGroup *api.ClusterGroup, orgName string, cgDeployment *clustergroup.ClusterGroupDeployment, requestedChart *chart.Chart) (*ClusterGroupDeploymentModel, error) {
 	deploymentModel := &ClusterGroupDeploymentModel{
 		ClusterGroupID:        clusterGroup.Id,
 		DeploymentName:        cgDeployment.Name,
@@ -182,7 +182,7 @@ func (m CGDeploymentManager) createDeploymentModel(clusterGroup *clustergroup.Cl
 	return deploymentModel, nil
 }
 
-func (m CGDeploymentManager) CreateDeployment(clusterGroup *clustergroup.ClusterGroup, orgName string, cgDeployment *clustergroup.ClusterGroupDeployment) ([]clustergroup.DeploymentStatus, error) {
+func (m CGDeploymentManager) CreateDeployment(clusterGroup *api.ClusterGroup, orgName string, cgDeployment *clustergroup.ClusterGroupDeployment) ([]clustergroup.DeploymentStatus, error) {
 
 	env := helm.GenerateHelmRepoEnv(orgName)
 	requestedChart, err := helm.GetRequestedChart(cgDeployment.ReleaseName, cgDeployment.Name, cgDeployment.Version, cgDeployment.Package, env)
@@ -213,7 +213,7 @@ func (m CGDeploymentManager) CreateDeployment(clusterGroup *clustergroup.Cluster
 
 	for _, commonCluster := range clusterGroup.MemberClusters {
 		deploymentCount++
-		go func(commonCluster adapter.Cluster, cgDeployment *clustergroup.ClusterGroupDeployment) {
+		go func(commonCluster api.Cluster, cgDeployment *clustergroup.ClusterGroupDeployment) {
 			clerr := m.installDeploymentOnCluster(commonCluster, orgName, env, cgDeployment, requestedChart)
 			status := "SUCCEEDED"
 			if clerr != nil {
@@ -270,7 +270,7 @@ func (m CGDeploymentManager) getDeploymentFromModel(deploymentModel *ClusterGrou
 	return deployment, nil
 }
 
-func (m CGDeploymentManager) GetDeployment(clusterGroup *clustergroup.ClusterGroup, deploymentName string) (*clustergroup.GetDeploymentResponse, error) {
+func (m CGDeploymentManager) GetDeployment(clusterGroup *api.ClusterGroup, deploymentName string) (*clustergroup.GetDeploymentResponse, error) {
 
 	deploymentModel, err := m.repository.FindByName(clusterGroup.Id, deploymentName)
 	if err != nil {
@@ -294,7 +294,7 @@ func (m CGDeploymentManager) GetDeployment(clusterGroup *clustergroup.ClusterGro
 
 	for _, commonCluster := range clusterGroup.MemberClusters {
 		deploymentCount++
-		go func(commonCluster adapter.Cluster, name string) {
+		go func(commonCluster api.Cluster, name string) {
 			status, clErr := m.getClusterDeploymentStatus(commonCluster, name)
 			if clErr != nil {
 				status = fmt.Sprintf("Failed to get status: %s", clErr.Error())
@@ -317,7 +317,7 @@ func (m CGDeploymentManager) GetDeployment(clusterGroup *clustergroup.ClusterGro
 	return deployment, nil
 }
 
-func (m CGDeploymentManager) GetAllDeployments(clusterGroup *clustergroup.ClusterGroup) ([]*clustergroup.ListDeploymentResponse, error) {
+func (m CGDeploymentManager) GetAllDeployments(clusterGroup *api.ClusterGroup) ([]*clustergroup.ListDeploymentResponse, error) {
 
 	deploymentModels, err := m.repository.FindAll(clusterGroup.Id)
 	if err != nil {
