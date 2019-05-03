@@ -25,6 +25,7 @@ type FederationHandler struct {
 }
 
 const FederationFeatureName = "federation"
+const DeploymentFeatureName = "deployment"
 
 // NewFederationHandler returns a new FederationHandler instance.
 func NewFederationHandler(

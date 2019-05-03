@@ -24,10 +24,12 @@ import (
 	"github.com/ghodss/yaml"
 	"github.com/goph/emperror"
 	"github.com/jinzhu/gorm"
+	"github.com/prometheus/common/log"
 	"github.com/sirupsen/logrus"
 	k8sHelm "k8s.io/helm/pkg/helm"
 	helm_env "k8s.io/helm/pkg/helm/environment"
 	"k8s.io/helm/pkg/proto/hapi/chart"
+	pkgHelm "github.com/banzaicloud/pipeline/pkg/helm"
 )
 
 // CGDeploymentManager
@@ -53,7 +55,22 @@ func NewCGDeploymentManager(
 	}
 }
 
-func (m CGDeploymentManager) installDeploymentOnCluster(commonCluster cluster.CommonCluster, orgName string, env helm_env.EnvSettings, cgDeployment *clustergroup.ClusterGroupDeployment) error {
+func (m *CGDeploymentManager) ReconcileState(featureState ClusterGroupFeature) error {
+
+	//TODO delete deployment from a cluster leaving the group,, delete all deployments of a group if featureState.Enabled = false
+	m.logger.Infof("reconcile deployments on group: %v", featureState.Enabled, featureState.ClusterGroup.Name)
+	return nil
+}
+
+func (m *CGDeploymentManager) GetMembersStatus(featureState ClusterGroupFeature) (map[string]string, error) {
+	statusMap := make(map[string]string, 0)
+	for _, memberCluster := range featureState.ClusterGroup.MemberClusters {
+		statusMap[memberCluster.GetName()] = "ready"
+	}
+	return statusMap, nil
+}
+
+func (m CGDeploymentManager) installDeploymentOnCluster(commonCluster cluster.CommonCluster, orgName string, env helm_env.EnvSettings, cgDeployment *clustergroup.ClusterGroupDeployment, chartRequested  *chart.Chart) error {
 	m.logger.Infof("Installing deployment on %s", commonCluster.GetName())
 	k8sConfig, err := commonCluster.GetK8sConfig()
 	if err != nil {
@@ -71,31 +88,37 @@ func (m CGDeploymentManager) installDeploymentOnCluster(commonCluster cluster.Co
 		return err
 	}
 
-	installOptions := []k8sHelm.InstallOption{
+	overrideOpts := []k8sHelm.InstallOption{
 		k8sHelm.InstallWait(cgDeployment.Wait),
 		k8sHelm.ValueOverrides(marshalledValues),
 	}
 
 	if cgDeployment.Timeout > 0 {
-		installOptions = append(installOptions, k8sHelm.InstallTimeout(cgDeployment.Timeout))
+		overrideOpts = append(overrideOpts, k8sHelm.InstallTimeout(cgDeployment.Timeout))
 	}
 
-	release, err := helm.CreateDeployment(
-		cgDeployment.Name,
-		cgDeployment.Version,
-		cgDeployment.Package,
+	hClient, err := pkgHelm.NewClient(k8sConfig, m.logger)
+	if err != nil {
+		return err
+	}
+	defer hClient.Close()
+
+	basicOptions := []k8sHelm.InstallOption{
+		k8sHelm.ReleaseName(cgDeployment.ReleaseName),
+		k8sHelm.InstallDryRun(cgDeployment.DryRun),
+	}
+	installOptions := append(helm.DefaultInstallOptions, basicOptions...)
+	installOptions = append(installOptions, overrideOpts...)
+
+	release, err := hClient.InstallReleaseFromChart(
+		chartRequested,
 		cgDeployment.Namespace,
-		cgDeployment.ReleaseName,
-		cgDeployment.DryRun,
-		nil,
-		k8sConfig,
-		env,
 		installOptions...,
 	)
 	if err != nil {
-		//TODO distinguish error codes
-		return err
+		return fmt.Errorf("Error deploying chart: %v", err)
 	}
+
 	m.logger.Infof("Installing deployment on %s succeeded: %s", commonCluster.GetName(), release.String())
 	return nil
 }
@@ -165,7 +188,11 @@ func (m CGDeploymentManager) CreateDeployment(clusterGroup *clustergroup.Cluster
 	if err != nil {
 		return nil, fmt.Errorf("error loading chart: %v", err)
 	}
-	//TODO use already downloaded chart at install
+
+	if cgDeployment.Namespace == "" {
+		log.Warn("Deployment namespace was not set failing back to default")
+		cgDeployment.Namespace = helm.DefaultNamespace
+	}
 
 	// save deployment
 	deploymentModel, err := m.createDeploymentModel(clusterGroup, orgName, cgDeployment, requestedChart)
@@ -186,7 +213,7 @@ func (m CGDeploymentManager) CreateDeployment(clusterGroup *clustergroup.Cluster
 	for _, commonCluster := range clusterGroup.MemberClusters {
 		deploymentCount++
 		go func(commonCluster cluster.CommonCluster, cgDeployment *clustergroup.ClusterGroupDeployment) {
-			clerr := m.installDeploymentOnCluster(commonCluster, orgName, env, cgDeployment)
+			clerr := m.installDeploymentOnCluster(commonCluster, orgName, env, cgDeployment, requestedChart)
 			status := "SUCCEEDED"
 			if clerr != nil {
 				status = fmt.Sprintf("FAILED: %s", clerr.Error())
@@ -253,6 +280,9 @@ func (m CGDeploymentManager) GetDeployment(clusterGroup *clustergroup.ClusterGro
 		return nil, err
 	}
 	deployment, err := m.getDeploymentFromModel(deploymentModel)
+	if err != nil {
+		return nil, err
+	}
 
 	// get deployment status for each cluster group member
 	targetClusterStatus := make([]clustergroup.DeploymentStatus, 0)

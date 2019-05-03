@@ -17,7 +17,6 @@ package clustergroup
 import (
 	"context"
 	"fmt"
-	"reflect"
 
 	"github.com/banzaicloud/pipeline/cluster"
 	"github.com/banzaicloud/pipeline/pkg/clustergroup"
@@ -99,7 +98,22 @@ func (g *Manager) CreateClusterGroup(ctx context.Context, name string, orgID uin
 		})
 	}
 
-	return g.cgRepo.Create(name, orgID, memberClusterModels)
+	cgId, err := g.cgRepo.Create(name, orgID, memberClusterModels)
+	if err != nil {
+		return nil, err
+	}
+
+	// enable DeploymentFeature by default on every cluster group
+	deploymentFeature := &ClusterGroupFeatureModel{
+		Enabled:		true,
+		Name:           DeploymentFeatureName,
+		ClusterGroupID: *cgId,
+	}
+	err = g.cgRepo.SaveFeature(deploymentFeature)
+	if err != nil {
+		return nil, err
+	}
+	return cgId, nil
 
 }
 
@@ -137,7 +151,7 @@ func (g *Manager) UpdateClusterGroup(ctx context.Context, orgID uint, clusterGro
 	}
 
 	// call feature handlers on members update
-	err = g.ReconcileFeatureHandlers(*existingClusterGroup)
+	err = g.ReconcileFeatures(*existingClusterGroup,true)
 	if err != nil {
 		return err
 	}
@@ -155,19 +169,13 @@ func (g *Manager) DeleteClusterGroup(ctx context.Context, clusterGroupId uint) e
 	}
 	cgroup := g.GetClusterGroupFromModel(ctx, cgModel, false)
 
-	enabledFeatures, err := g.GetEnabledFeatures(*cgroup)
+
+	// call feature handlers
+	err = g.DisableFeatures(*cgroup)
 	if err != nil {
 		return err
 	}
-	if len(enabledFeatures) > 0 {
-		if err != nil {
-			featureNames := reflect.ValueOf(enabledFeatures).MapKeys()
-			return errors.WithStack(&clusterGroupHasEnabledFeaturesError{
-				featureNames:     featureNames,
-				clusterGroupName: cgroup.Name,
-			})
-		}
-	}
+
 
 	return g.cgRepo.Delete(cgModel)
 }

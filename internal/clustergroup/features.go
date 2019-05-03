@@ -66,7 +66,7 @@ func (g *Manager) GetEnabledFeatures(clusterGroup clustergroup.ClusterGroup) (ma
 	return enabledFeatures, nil
 }
 
-func (g *Manager) ReconcileFeatureHandlers(clusterGroup clustergroup.ClusterGroup) error {
+func (g *Manager) ReconcileFeatures(clusterGroup clustergroup.ClusterGroup, onlyEnabledHandlers bool) error {
 	g.logger.Debugf("reconcile features for group: %s", clusterGroup.Name)
 
 	features, err := g.GetFeatures(clusterGroup)
@@ -75,12 +75,35 @@ func (g *Manager) ReconcileFeatureHandlers(clusterGroup clustergroup.ClusterGrou
 	}
 
 	for name, feature := range features {
-		if feature.Enabled {
+		if feature.Enabled || !onlyEnabledHandlers {
 			handler := g.featureHandlerMap[name]
 			if handler == nil {
 				g.logger.Debugf("no handler registered for cluster group feature %s", name)
 				continue
 			}
+			handler.ReconcileState(feature)
+		}
+	}
+
+	return nil
+}
+
+func (g *Manager) DisableFeatures(clusterGroup clustergroup.ClusterGroup) error {
+	g.logger.Debugf("disable features for group: %s", clusterGroup.Name)
+
+	features, err := g.GetFeatures(clusterGroup)
+	if err != nil {
+		return err
+	}
+
+	for name, feature := range features {
+		if feature.Enabled  {
+			handler := g.featureHandlerMap[name]
+			if handler == nil {
+				g.logger.Debugf("no handler registered for cluster group feature %s", name)
+				continue
+			}
+			feature.Enabled = false
 			handler.ReconcileState(feature)
 		}
 	}

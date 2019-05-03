@@ -42,7 +42,7 @@ func (n *API) Enable(c *gin.Context) {
 		return
 	}
 
-	err = n.clusterGroupManager.ReconcileFeatureHandlers(*clusterGroup)
+	err = n.clusterGroupManager.ReconcileFeatures(*clusterGroup, false)
 	if err != nil {
 		n.errorHandler.Handle(c, err)
 		return

@@ -264,7 +264,9 @@ func main() {
 
 	clusterGroupManager := clustergroup.NewManager(clusterManager, db, log, errorHandler)
 	federationHandler := clustergroup.NewFederationHandler(logger, errorHandler)
+	deploymentManager := clustergroup.NewCGDeploymentManager(db, log, errorHandler)
 	clusterGroupManager.RegisterFeatureHandler(clustergroup.FederationFeatureName, federationHandler)
+	clusterGroupManager.RegisterFeatureHandler(clustergroup.DeploymentFeatureName, deploymentManager)
 
 	nplsApi := api.NewNodepoolManagerAPI(clusterGetter, log, errorHandler)
 

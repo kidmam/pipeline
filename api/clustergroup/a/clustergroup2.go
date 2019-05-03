@@ -313,7 +313,7 @@ func (n *ClusterGroupAPI) DisableFeature(c *gin.Context) {
 		return
 	}
 
-	err = n.clusterGroupManager.ReconcileFeatureHandlers(*clusterGroup)
+	err = n.clusterGroupManager.ReconcileFeatures(*clusterGroup, false)
 	if err != nil {
 		ErrorHandler.Handle(err)
 		ginutils.ReplyWithErrorResponse(c, api.ErrorResponseFrom(err))
@@ -357,7 +357,7 @@ func (n *ClusterGroupAPI) UpdateFeature(c *gin.Context) {
 		return
 	}
 
-	err = n.clusterGroupManager.ReconcileFeatureHandlers(*clusterGroup)
+	err = n.clusterGroupManager.ReconcileFeatures(*clusterGroup, false)
 	if err != nil {
 		ErrorHandler.Handle(err)
 		ginutils.ReplyWithErrorResponse(c, api.ErrorResponseFrom(err))
@@ -401,7 +401,7 @@ func (n *ClusterGroupAPI) EnableFeature(c *gin.Context) {
 		return
 	}
 
-	err = n.clusterGroupManager.ReconcileFeatureHandlers(*clusterGroup)
+	err = n.clusterGroupManager.ReconcileFeatures(*clusterGroup, false))
 	if err != nil {
 		ErrorHandler.Handle(err)
 		ginutils.ReplyWithErrorResponse(c, api.ErrorResponseFrom(err))
