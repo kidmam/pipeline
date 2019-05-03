@@ -26,10 +26,10 @@ import (
 )
 
 type ClusterGroupFeature struct {
-	Name         string
-	ClusterGroup cgroup.ClusterGroup
-	Enabled      bool
-	Properties   interface{}
+	Name         string              `json:"name"`
+	ClusterGroup cgroup.ClusterGroup `json:"clusterGroup"`
+	Enabled      bool                `json:"enabled"`
+	Properties   interface{}         `json:"properties"`
 }
 
 type ClusterGroupFeatureHandler interface {
@@ -52,7 +52,7 @@ func (g *Manager) GetFeatureStatus(feature ClusterGroupFeature) (map[string]stri
 func (g *Manager) GetEnabledFeatures(clusterGroup clustergroup.ClusterGroup) (map[string]ClusterGroupFeature, error) {
 	enabledFeatures := make(map[string]ClusterGroupFeature, 0)
 
-	features, err := g.getFeatures(clusterGroup)
+	features, err := g.GetFeatures(clusterGroup)
 	if err != nil {
 		return nil, err
 	}
@@ -69,7 +69,7 @@ func (g *Manager) GetEnabledFeatures(clusterGroup clustergroup.ClusterGroup) (ma
 func (g *Manager) ReconcileFeatureHandlers(clusterGroup clustergroup.ClusterGroup) error {
 	g.logger.Debugf("reconcile features for group: %s", clusterGroup.Name)
 
-	features, err := g.getFeatures(clusterGroup)
+	features, err := g.GetFeatures(clusterGroup)
 	if err != nil {
 		return err
 	}
@@ -88,7 +88,7 @@ func (g *Manager) ReconcileFeatureHandlers(clusterGroup clustergroup.ClusterGrou
 	return nil
 }
 
-func (g *Manager) getFeatures(clusterGroup clustergroup.ClusterGroup) (map[string]ClusterGroupFeature, error) {
+func (g *Manager) GetFeatures(clusterGroup clustergroup.ClusterGroup) (map[string]ClusterGroupFeature, error) {
 	features := make(map[string]ClusterGroupFeature, 0)
 
 	results, err := g.cgRepo.GetAllFeatures(clusterGroup.Id)

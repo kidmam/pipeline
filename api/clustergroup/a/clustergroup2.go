@@ -12,23 +12,31 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-package api
+package a
 
 import (
 	"context"
 	"net/http"
 	"strings"
 
+	"github.com/banzaicloud/pipeline/api"
 	"github.com/banzaicloud/pipeline/auth"
+	"github.com/banzaicloud/pipeline/config"
 	"github.com/banzaicloud/pipeline/helm"
 	cgroup "github.com/banzaicloud/pipeline/internal/clustergroup"
-	"github.com/banzaicloud/pipeline/internal/platform/gin/utils"
+	ginutils "github.com/banzaicloud/pipeline/internal/platform/gin/utils"
 	"github.com/banzaicloud/pipeline/pkg/clustergroup"
 	pkgCommon "github.com/banzaicloud/pipeline/pkg/common"
 	"github.com/gin-gonic/gin"
 	"github.com/goph/emperror"
 	"github.com/sirupsen/logrus"
 )
+
+var ErrorHandler emperror.Handler
+
+func init() {
+	ErrorHandler = config.ErrorHandler()
+}
 
 // ClusterGroupAPI implements the Cluster Group Management API actions.
 type ClusterGroupAPI struct {
@@ -65,7 +73,7 @@ func (e clusterGroupAPIErrorHandler) Handle(c *gin.Context, err error) {
 	e.handler.Handle(err)
 }
 
-// errorResponseFrom translates the given error into a components.ErrorResponse
+// api.ErrorResponseFrom translates the given error into a components.ErrorResponse
 func (e clusterGroupAPIErrorHandler) errorResponseFrom(err error) *pkgCommon.ErrorResponse {
 	if cgroup.IsClusterGroupNotFoundError(err) {
 		return &pkgCommon.ErrorResponse{
@@ -107,7 +115,7 @@ func (e clusterGroupAPIErrorHandler) errorResponseFrom(err error) *pkgCommon.Err
 		}
 	}
 
-	return errorResponseFrom(err)
+	return api.ErrorResponseFrom(err)
 }
 
 func (n *ClusterGroupAPI) GetClusterGroup(c *gin.Context) {
@@ -209,10 +217,32 @@ func (n *ClusterGroupAPI) DeleteClusterGroup(c *gin.Context) {
 	c.JSON(http.StatusOK, "")
 }
 
+func (n *ClusterGroupAPI) GetFeatures(c *gin.Context) {
+	ctx := ginutils.Context(context.Background(), c)
+
+	clusterGroupId, ok := ginutils.UintParam(c, "id")
+	if !ok {
+		return
+	}
+	clusterGroup, err := n.clusterGroupManager.GetClusterGroupById(ctx, clusterGroupId)
+	if err != nil {
+		n.errorHandler.Handle(c, err)
+		return
+	}
+
+	features, err := n.clusterGroupManager.GetFeatures(*clusterGroup)
+	if err != nil {
+		ErrorHandler.Handle(err)
+		ginutils.ReplyWithErrorResponse(c, api.ErrorResponseFrom(err))
+		return
+	}
+
+	c.JSON(http.StatusOK, features)
+}
+
 func (n *ClusterGroupAPI) GetFeature(c *gin.Context) {
 	ctx := ginutils.Context(context.Background(), c)
 
-	//orgId := auth.GetCurrentOrganization(c.Request).ID
 	clusterGroupId, ok := ginutils.UintParam(c, "id")
 	if !ok {
 		return
@@ -226,8 +256,8 @@ func (n *ClusterGroupAPI) GetFeature(c *gin.Context) {
 	featureName := c.Param("featureName")
 	feature, err := n.clusterGroupManager.GetFeature(*clusterGroup, featureName)
 	if err != nil {
-		errorHandler.Handle(err)
-		ginutils.ReplyWithErrorResponse(c, errorResponseFrom(err))
+		ErrorHandler.Handle(err)
+		ginutils.ReplyWithErrorResponse(c, api.ErrorResponseFrom(err))
 		return
 	}
 
@@ -239,8 +269,8 @@ func (n *ClusterGroupAPI) GetFeature(c *gin.Context) {
 	if feature.Enabled {
 		status, err := n.clusterGroupManager.GetFeatureStatus(*feature)
 		if err != nil {
-			errorHandler.Handle(err)
-			ginutils.ReplyWithErrorResponse(c, errorResponseFrom(err))
+			ErrorHandler.Handle(err)
+			ginutils.ReplyWithErrorResponse(c, api.ErrorResponseFrom(err))
 			return
 		}
 		response.Status = status
@@ -249,7 +279,7 @@ func (n *ClusterGroupAPI) GetFeature(c *gin.Context) {
 	c.JSON(http.StatusOK, response)
 }
 
-func (n *ClusterGroupAPI) SetFeature(c *gin.Context) {
+func (n *ClusterGroupAPI) DisableFeature(c *gin.Context) {
 	ctx := ginutils.Context(context.Background(), c)
 
 	var req clustergroup.ClusterGroupFeatureRequest
@@ -278,15 +308,103 @@ func (n *ClusterGroupAPI) SetFeature(c *gin.Context) {
 
 	err = n.clusterGroupManager.SetFeatureParams(featureName, clusterGroup, req.Enabled, req.Properties)
 	if err != nil {
-		errorHandler.Handle(err)
-		ginutils.ReplyWithErrorResponse(c, errorResponseFrom(err))
+		ErrorHandler.Handle(err)
+		ginutils.ReplyWithErrorResponse(c, api.ErrorResponseFrom(err))
 		return
 	}
 
 	err = n.clusterGroupManager.ReconcileFeatureHandlers(*clusterGroup)
 	if err != nil {
-		errorHandler.Handle(err)
-		ginutils.ReplyWithErrorResponse(c, errorResponseFrom(err))
+		ErrorHandler.Handle(err)
+		ginutils.ReplyWithErrorResponse(c, api.ErrorResponseFrom(err))
+		return
+	}
+
+	c.JSON(http.StatusOK, "")
+}
+
+func (n *ClusterGroupAPI) UpdateFeature(c *gin.Context) {
+	ctx := ginutils.Context(context.Background(), c)
+
+	var req clustergroup.ClusterGroupFeatureRequest
+	if err := c.BindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, pkgCommon.ErrorResponse{
+			Code:    http.StatusBadRequest,
+			Message: "Error parsing request",
+			Error:   err.Error(),
+		})
+		return
+	}
+
+	//orgId := auth.GetCurrentOrganization(c.Request).ID
+	clusterGroupId, ok := ginutils.UintParam(c, "id")
+	if !ok {
+		return
+	}
+
+	clusterGroup, err := n.clusterGroupManager.GetClusterGroupById(ctx, clusterGroupId)
+	if err != nil {
+		n.errorHandler.Handle(c, err)
+		return
+	}
+
+	featureName := c.Param("featureName")
+
+	err = n.clusterGroupManager.SetFeatureParams(featureName, clusterGroup, req.Enabled, req.Properties)
+	if err != nil {
+		ErrorHandler.Handle(err)
+		ginutils.ReplyWithErrorResponse(c, api.ErrorResponseFrom(err))
+		return
+	}
+
+	err = n.clusterGroupManager.ReconcileFeatureHandlers(*clusterGroup)
+	if err != nil {
+		ErrorHandler.Handle(err)
+		ginutils.ReplyWithErrorResponse(c, api.ErrorResponseFrom(err))
+		return
+	}
+
+	c.JSON(http.StatusOK, "")
+}
+
+func (n *ClusterGroupAPI) EnableFeature(c *gin.Context) {
+	ctx := ginutils.Context(context.Background(), c)
+
+	var req clustergroup.ClusterGroupFeatureRequest
+	if err := c.BindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, pkgCommon.ErrorResponse{
+			Code:    http.StatusBadRequest,
+			Message: "Error parsing request",
+			Error:   err.Error(),
+		})
+		return
+	}
+
+	//orgId := auth.GetCurrentOrganization(c.Request).ID
+	clusterGroupId, ok := ginutils.UintParam(c, "id")
+	if !ok {
+		return
+	}
+
+	clusterGroup, err := n.clusterGroupManager.GetClusterGroupById(ctx, clusterGroupId)
+	if err != nil {
+		n.errorHandler.Handle(c, err)
+		return
+	}
+
+	featureName := c.Param("featureName")
+
+	err = n.clusterGroupManager.SetFeatureParams(featureName, clusterGroup, req.Enabled, req.Properties)
+	if err != nil {
+		ErrorHandler.Handle(err)
+		ginutils.ReplyWithErrorResponse(c, api.ErrorResponseFrom(err))
+		return
+	}
+
+	err = n.clusterGroupManager.ReconcileFeatureHandlers(*clusterGroup)
+	if err != nil {
+		ErrorHandler.Handle(err)
+		ginutils.ReplyWithErrorResponse(c, api.ErrorResponseFrom(err))
 		return
 	}
 
