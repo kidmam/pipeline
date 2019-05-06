@@ -68,9 +68,11 @@ type UpdateResponse struct {
 
 // MemberClusterStatus
 type MemberCluster struct {
-	ID     uint   `json:"id" yaml:"id"`
-	Name   string `json:"name" yaml:"name"`
-	Status string `json:"status,omitempty" yaml:"status,omitempty"`
+	ID           uint   `json:"id" yaml:"id"`
+	Cloud        string `json:"cloud" yaml:"cloud"`
+	Distribution string `json:"distribution" yaml:"distribution"`
+	Name         string `json:"name" yaml:"name"`
+	Status       string `json:"status,omitempty" yaml:"status,omitempty"`
 }
 
 // ClusterGroup

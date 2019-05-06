@@ -227,8 +227,10 @@ func (g *Manager) GetClusterGroupFromModel(ctx context.Context, cg *ClusterGroup
 			continue
 		}
 		memberCluster := api.MemberCluster{
-			ID:   cluster.GetID(),
-			Name: cluster.GetName(),
+			ID:           cluster.GetID(),
+			Cloud:        cluster.GetCloud(),
+			Distribution: cluster.GetDistribution(),
+			Name:         cluster.GetName(),
 		}
 		if withStatus {
 			clusterStatus, err := cluster.GetStatus()

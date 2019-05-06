@@ -21,6 +21,8 @@ import (
 // Cluster
 type Cluster interface {
 	GetID() uint
+	GetCloud() string
+	GetDistribution() string
 	GetName() string
 	GetK8sConfig() ([]byte, error)
 	GetStatus() (*cluster.GetClusterStatusResponse, error)
