@@ -15,15 +15,13 @@
 package api
 
 // FeatureRequest
-type FeatureRequest struct {
-	Properties interface{} `json:"properties,omitempty" yaml:"properties"`
-}
+type FeatureRequest interface{}
 
 // FeatureResponse
 type FeatureResponse struct {
-	FeatureRequest
-	Enabled bool              `json:"enabled"`
-	Status  map[string]string `json:"status,omitempty" yaml:"status"`
+	Properties FeatureRequest    `json:"properties,omitempty" yaml:"properties"`
+	Enabled    bool              `json:"enabled"`
+	Status     map[string]string `json:"status,omitempty" yaml:"status"`
 }
 
 // Feature
@@ -32,4 +30,11 @@ type Feature struct {
 	ClusterGroup ClusterGroup `json:"clusterGroup"`
 	Enabled      bool         `json:"enabled"`
 	Properties   interface{}  `json:"properties"`
+}
+
+type FeatureHandler interface {
+	ReconcileState(featureState Feature) error
+	ValidateState(featureState Feature) error
+	ValidateProperties(properties interface{}) error
+	GetMembersStatus(featureState Feature) (map[string]string, error)
 }

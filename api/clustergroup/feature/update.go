@@ -22,19 +22,14 @@ import (
 
 	cgroupIAPI "github.com/banzaicloud/pipeline/internal/clustergroup/api"
 	ginutils "github.com/banzaicloud/pipeline/internal/platform/gin/utils"
-	pkgCommon "github.com/banzaicloud/pipeline/pkg/common"
 )
 
 func (n *API) Update(c *gin.Context) {
 	ctx := ginutils.Context(context.Background(), c)
 
 	var req cgroupIAPI.FeatureRequest
-	if err := c.BindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, pkgCommon.ErrorResponse{
-			Code:    http.StatusBadRequest,
-			Message: "Error parsing request",
-			Error:   err.Error(),
-		})
+	if err := c.ShouldBindJSON(&req); err != nil {
+		n.errorHandler.Handle(c, c.Error(err).SetType(gin.ErrorTypeBind))
 		return
 	}
 
@@ -50,8 +45,7 @@ func (n *API) Update(c *gin.Context) {
 	}
 
 	featureName := c.Param("featureName")
-
-	err = n.clusterGroupManager.SetFeatureParams(featureName, clusterGroup, true, req.Properties)
+	err = n.clusterGroupManager.SetFeatureParams(featureName, clusterGroup, req)
 	if err != nil {
 		n.errorHandler.Handle(c, err)
 		return

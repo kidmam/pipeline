@@ -40,7 +40,7 @@ func NewClusterGroupRepository(
 	}
 }
 
-// findOne returns a cluster group instance for an organization by clusterGroupId.
+// FindOne returns a cluster group instance for an organization by clusterGroupId.
 func (g *ClusterGroupRepository) FindOne(cg ClusterGroupModel) (*ClusterGroupModel, error) {
 	if cg.ID == 0 && len(cg.Name) == 0 {
 		return nil, errors.New("either clusterGroupId or name is required")
@@ -62,7 +62,7 @@ func (g *ClusterGroupRepository) FindOne(cg ClusterGroupModel) (*ClusterGroupMod
 	return &result, nil
 }
 
-// findAll returns all cluster groups
+// FindAll returns all cluster groups
 func (g *ClusterGroupRepository) FindAll() ([]*ClusterGroupModel, error) {
 	var cgroups []*ClusterGroupModel
 
@@ -74,6 +74,7 @@ func (g *ClusterGroupRepository) FindAll() ([]*ClusterGroupModel, error) {
 	return cgroups, nil
 }
 
+// Create persits a cluster group
 func (g *ClusterGroupRepository) Create(name string, orgID uint, memberClusterModels []MemberClusterModel) (*uint, error) {
 	clusterGroupModel := &ClusterGroupModel{
 		Name:           name,
@@ -88,6 +89,7 @@ func (g *ClusterGroupRepository) Create(name string, orgID uint, memberClusterMo
 	return &clusterGroupModel.ID, nil
 }
 
+// UpdateMembers updates cluster group members
 func (g *ClusterGroupRepository) UpdateMembers(cgroup *api.ClusterGroup, name string, newMembers map[uint]api.Cluster) error {
 	cgModel, err := g.FindOne(ClusterGroupModel{
 		ID: cgroup.Id,
@@ -125,6 +127,7 @@ func (g *ClusterGroupRepository) UpdateMembers(cgroup *api.ClusterGroup, name st
 	return nil
 }
 
+// Delete deletes a cluster group
 func (g *ClusterGroupRepository) Delete(cgroup *ClusterGroupModel) error {
 	for _, fp := range cgroup.FeatureParams {
 		err := g.db.Delete(fp).Error
@@ -148,12 +151,17 @@ func (g *ClusterGroupRepository) Delete(cgroup *ClusterGroupModel) error {
 	return nil
 }
 
+// GetFeature gets a feature for a cluster
 func (g *ClusterGroupRepository) GetFeature(clusterGroupID uint, featureName string) (*ClusterGroupFeatureModel, error) {
 	var result ClusterGroupFeatureModel
 	err := g.db.Where(ClusterGroupFeatureModel{
 		ClusterGroupID: clusterGroupID,
 		Name:           featureName,
 	}).First(&result).Error
+
+	if gorm.IsRecordNotFoundError(err) {
+		return nil, errors.WithStack(&recordNotFoundError{})
+	}
 
 	if err != nil {
 		return nil, err
@@ -162,6 +170,7 @@ func (g *ClusterGroupRepository) GetFeature(clusterGroupID uint, featureName str
 	return &result, nil
 }
 
+// SaveFeature persists a cluster group feature
 func (g *ClusterGroupRepository) SaveFeature(feature *ClusterGroupFeatureModel) error {
 	err := g.db.Save(feature).Error
 	if err != nil {
@@ -170,15 +179,37 @@ func (g *ClusterGroupRepository) SaveFeature(feature *ClusterGroupFeatureModel) 
 	return nil
 }
 
+// GetAllFeatures gets all features for a cluster group
 func (g *ClusterGroupRepository) GetAllFeatures(clusterGroupID uint) ([]ClusterGroupFeatureModel, error) {
 	var results []ClusterGroupFeatureModel
 	err := g.db.Find(&results, ClusterGroupFeatureModel{
 		ClusterGroupID: clusterGroupID,
 	}).Error
 
+	if gorm.IsRecordNotFoundError(err) {
+		return nil, errors.WithStack(&recordNotFoundError{})
+	}
+
 	if err != nil {
 		return nil, err
 	}
 
 	return results, nil
+}
+
+// FindMemberClusterByID returns a MemberClusterModel for a cluster ID
+func (g *ClusterGroupRepository) FindMemberClusterByID(clusterID uint) (*MemberClusterModel, error) {
+	var result MemberClusterModel
+	err := g.db.Where(MemberClusterModel{
+		ClusterID: clusterID,
+	}).First(&result).Error
+	if gorm.IsRecordNotFoundError(err) {
+		return nil, errors.WithStack(&recordNotFoundError{})
+	}
+
+	if err != nil {
+		return nil, emperror.Wrap(err, "could not get record")
+	}
+
+	return &result, nil
 }

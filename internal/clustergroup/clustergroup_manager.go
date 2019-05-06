@@ -17,6 +17,7 @@ package clustergroup
 import (
 	"context"
 	"fmt"
+	"strconv"
 
 	"github.com/goph/emperror"
 	"github.com/pkg/errors"
@@ -31,7 +32,7 @@ type Manager struct {
 	cgRepo            *ClusterGroupRepository
 	logger            logrus.FieldLogger
 	errorHandler      emperror.Handler
-	featureHandlerMap map[string]FeatureHandler
+	featureHandlerMap map[string]api.FeatureHandler
 }
 
 // NewManager returns a new Manager instance.
@@ -41,7 +42,7 @@ func NewManager(
 	logger logrus.FieldLogger,
 	errorHandler emperror.Handler,
 ) *Manager {
-	featureHandlerMap := make(map[string]FeatureHandler, 0)
+	featureHandlerMap := make(map[string]api.FeatureHandler, 0)
 	return &Manager{
 		clusterGetter:     clusterGetter,
 		cgRepo:            repository,
@@ -69,12 +70,30 @@ func (g *Manager) CreateClusterGroup(ctx context.Context, name string, orgID uin
 
 	memberClusterModels := make([]MemberClusterModel, 0)
 	for _, clusterName := range members {
-		cluster, err := g.clusterGetter.GetClusterByName(ctx, orgID, clusterName)
+		var cluster api.Cluster
+		err = nil
+		if clusterID, err := strconv.ParseUint(clusterName, 10, 64); err == nil {
+			cluster, err = g.clusterGetter.GetClusterByID(ctx, orgID, uint(clusterID))
+			if err == nil {
+				clusterName = cluster.GetName()
+			}
+		}
+		if cluster == nil {
+			cluster, err = g.clusterGetter.GetClusterByName(ctx, orgID, clusterName)
+		}
 		if err != nil {
 			return nil, errors.WithStack(&memberClusterNotFoundError{
 				orgID:       orgID,
 				clusterName: clusterName,
 			})
+		}
+		if ok, err := g.isClusterMemberOfAClusterGroup(cluster.GetID(), 0); ok {
+			return nil, errors.WithStack(&memberClusterPartOfAClusterGroupError{
+				orgID:       orgID,
+				clusterName: clusterName,
+			})
+		} else if err != nil {
+			return nil, errors.WithStack(err)
 		}
 		clusterIsReady, err := cluster.IsReady()
 		if err == nil && clusterIsReady {
@@ -123,12 +142,30 @@ func (g *Manager) UpdateClusterGroup(ctx context.Context, orgID uint, clusterGro
 	newMembers := make(map[uint]api.Cluster, 0)
 
 	for _, clusterName := range members {
-		cluster, err := g.clusterGetter.GetClusterByName(ctx, orgID, clusterName)
+		var cluster api.Cluster
+		err = nil
+		if clusterID, err := strconv.ParseUint(clusterName, 10, 64); err == nil {
+			cluster, err = g.clusterGetter.GetClusterByID(ctx, orgID, uint(clusterID))
+			if err == nil {
+				clusterName = cluster.GetName()
+			}
+		}
+		if cluster == nil {
+			cluster, err = g.clusterGetter.GetClusterByName(ctx, orgID, clusterName)
+		}
 		if err != nil {
 			return errors.WithStack(&memberClusterNotFoundError{
 				orgID:       orgID,
 				clusterName: clusterName,
 			})
+		}
+		if ok, err := g.isClusterMemberOfAClusterGroup(cluster.GetID(), existingClusterGroup.Id); ok {
+			return errors.WithStack(&memberClusterPartOfAClusterGroupError{
+				orgID:       orgID,
+				clusterName: clusterName,
+			})
+		} else if err != nil {
+			return errors.WithStack(err)
 		}
 		clusterIsReady, err := cluster.IsReady()
 		if err == nil && clusterIsReady {
@@ -151,7 +188,6 @@ func (g *Manager) UpdateClusterGroup(ctx context.Context, orgID uint, clusterGro
 	}
 
 	return nil
-
 }
 
 func (g *Manager) DeleteClusterGroup(ctx context.Context, clusterGroupId uint) error {
@@ -178,39 +214,33 @@ func (g *Manager) GetClusterGroupFromModel(ctx context.Context, cg *ClusterGroup
 	clusterGroup.Id = cg.ID
 	clusterGroup.UID = cg.UID
 	clusterGroup.OrganizationID = cg.OrganizationID
-	if withStatus {
-		clusterGroup.MembersStatus = make([]api.MemberClusterStatus, 0)
-	} else {
-		clusterGroup.Members = make([]string, 0)
-	}
+	clusterGroup.Members = make([]api.MemberCluster, 0)
 	clusterGroup.MemberClusters = make(map[string]api.Cluster, 0)
+
 	for _, m := range cg.Members {
 		cluster, err := g.clusterGetter.GetClusterByIDOnly(ctx, m.ClusterID)
 		if err != nil {
-			clusterGroup.MembersStatus = append(clusterGroup.MembersStatus, api.MemberClusterStatus{
+			clusterGroup.Members = append(clusterGroup.Members, api.MemberCluster{
 				Name:   fmt.Sprintf("clusterID: %v", m.ClusterID),
 				Status: "cluster not found",
 			})
 			continue
 		}
-		clusterGroup.Members = append(clusterGroup.Members, cluster.GetName())
-		clusterGroup.MemberClusters[cluster.GetName()] = cluster
-
+		memberCluster := api.MemberCluster{
+			ID:   cluster.GetID(),
+			Name: cluster.GetName(),
+		}
 		if withStatus {
 			clusterStatus, err := cluster.GetStatus()
 			if err != nil {
-				clusterGroup.MembersStatus = append(clusterGroup.MembersStatus, api.MemberClusterStatus{
-					Name:   cluster.GetName(),
-					Status: err.Error(),
-				})
+				memberCluster.Status = err.Error()
 			} else {
-				clusterGroup.MembersStatus = append(clusterGroup.MembersStatus, api.MemberClusterStatus{
-					Name:   cluster.GetName(),
-					Status: clusterStatus.Status,
-				})
+				memberCluster.Status = clusterStatus.Status
 			}
 		}
 
+		clusterGroup.Members = append(clusterGroup.Members, memberCluster)
+		clusterGroup.MemberClusters[cluster.GetName()] = cluster
 	}
 
 	return &clusterGroup
@@ -254,4 +284,21 @@ func (g *Manager) GetAllClusterGroups(ctx context.Context) ([]api.ClusterGroup, 
 	}
 
 	return groups, nil
+}
+
+func (g *Manager) isClusterMemberOfAClusterGroup(clusterID uint, clusterGroupId uint) (bool, error) {
+	result, err := g.cgRepo.FindMemberClusterByID(clusterID)
+	if IsRecordNotFoundError(err) {
+		return false, nil
+	}
+
+	if err != nil {
+		return true, err
+	}
+
+	if clusterGroupId > 0 && result.ClusterGroupID == clusterGroupId {
+		return false, nil
+	}
+
+	return true, nil
 }

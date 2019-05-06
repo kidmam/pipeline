@@ -265,8 +265,8 @@ func main() {
 	}
 	clusterAPI := api.NewClusterAPI(clusterManager, clusterGetter, workflowClient, log, errorHandler, externalBaseURL, clusterCreators, clusterDeleters)
 
-	clusterGroupManager := clustergroup.NewManager(cgroupAdapter.NewClusterGetter(clusterManager), clustergroup.NewClusterGroupRepository(db, logger), log, errorHandler)
-	federationHandler := clustergroup.NewFederationHandler(logger, errorHandler)
+	clusterGroupManager := clustergroup.NewManager(cgroupAdapter.NewClusterGetter(clusterManager), clustergroup.NewClusterGroupRepository(db, log), log, errorHandler)
+	federationHandler := clustergroup.NewFederationHandler(log, errorHandler)
 	deploymentManager := clustergroup.NewCGDeploymentManager(db, log, errorHandler)
 	clusterGroupManager.RegisterFeatureHandler(clustergroup.FederationFeatureName, federationHandler)
 	clusterGroupManager.RegisterFeatureHandler(clustergroup.DeploymentFeatureName, deploymentManager)
@@ -444,7 +444,7 @@ func main() {
 			}
 
 			// ClusterGroupAPI
-			cgroupsAPI := cgroupAPI.New(clusterGroupManager, deploymentManager, log, errorHandler)
+			cgroupsAPI := cgroupAPI.NewAPI(clusterGroupManager, deploymentManager, log, errorHandler)
 			cgroupsAPI.AddRoutes(orgs.Group("/:orgid/clustergroups"))
 
 			clusters := orgs.Group("/:orgid/clusters/:id")

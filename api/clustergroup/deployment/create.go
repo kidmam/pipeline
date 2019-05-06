@@ -53,13 +53,8 @@ func (n *API) Create(c *gin.Context) {
 		return
 	}
 	var deployment *clustergroup.ClusterGroupDeployment
-	err = c.BindJSON(&deployment)
-	if err != nil {
-		c.JSON(http.StatusBadRequest, pkgCommon.ErrorResponse{
-			Code:    http.StatusBadRequest,
-			Message: "Error parsing request",
-			Error:   err.Error(),
-		})
+	if err := c.ShouldBindJSON(&deployment); err != nil {
+		n.errorHandler.Handle(c, c.Error(err).SetType(gin.ErrorTypeBind))
 		return
 	}
 

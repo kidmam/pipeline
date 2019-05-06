@@ -57,9 +57,16 @@ func NewCGDeploymentManager(
 }
 
 func (m *CGDeploymentManager) ReconcileState(featureState api.Feature) error {
-
 	//TODO delete deployment from a cluster leaving the group,, delete all deployments of a group if featureState.Enabled = false
-	m.logger.Infof("reconcile deployments on group: %v", featureState.Enabled, featureState.ClusterGroup.Name)
+	m.logger.Infof("reconcile deployments on group: %v", featureState.ClusterGroup.Name)
+	return nil
+}
+
+func (m *CGDeploymentManager) ValidateState(featureState api.Feature) error {
+	return nil
+}
+
+func (m *CGDeploymentManager) ValidateProperties(properties interface{}) error {
 	return nil
 }
 

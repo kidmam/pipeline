@@ -45,6 +45,14 @@ func (f *FederationHandler) ReconcileState(featureState api.Feature) error {
 	return nil
 }
 
+func (f *FederationHandler) ValidateState(featureState api.Feature) error {
+	return nil
+}
+
+func (f *FederationHandler) ValidateProperties(properties interface{}) error {
+	return nil
+}
+
 func (f *FederationHandler) GetMembersStatus(featureState api.Feature) (map[string]string, error) {
 	statusMap := make(map[string]string, 0)
 	for _, memberCluster := range featureState.ClusterGroup.MemberClusters {

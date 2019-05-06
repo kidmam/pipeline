@@ -15,8 +15,24 @@
 package clustergroup
 
 import (
+	"fmt"
+
 	"github.com/pkg/errors"
 )
+
+type unknownFeature struct {
+	name string
+}
+
+func (e *unknownFeature) Error() string {
+	return "unknown feature"
+}
+
+func (e *unknownFeature) Context() []interface{} {
+	return []interface{}{
+		"name", e.name,
+	}
+}
 
 type clusterGroupNotFoundError struct {
 	clusterGroup ClusterGroupModel
@@ -75,6 +91,10 @@ func (e *memberClusterNotFoundError) Error() string {
 	return "member cluster not found"
 }
 
+func (e *memberClusterNotFoundError) Message() string {
+	return fmt.Sprintf("%s: %s", e.Error(), e.clusterName)
+}
+
 func (e *memberClusterNotFoundError) Context() []interface{} {
 	return []interface{}{
 		"clusterGroupName", e.clusterName,
@@ -83,10 +103,10 @@ func (e *memberClusterNotFoundError) Context() []interface{} {
 }
 
 // IsMemberClusterNotFoundError returns true if the passed in error designates a cluster group member is not found
-func IsMemberClusterNotFoundError(err error) bool {
-	_, ok := errors.Cause(err).(*memberClusterNotFoundError)
+func IsMemberClusterNotFoundError(err error) (*memberClusterNotFoundError, bool) {
+	e, ok := errors.Cause(err).(*memberClusterNotFoundError)
 
-	return ok
+	return e, ok
 }
 
 type clusterGroupHasEnabledFeaturesError struct {
@@ -112,6 +132,18 @@ func IsClusterGroupHasEnabledFeaturesError(err error) bool {
 	return ok
 }
 
+type recordNotFoundError struct{}
+
+func (e *recordNotFoundError) Error() string {
+	return "record not found"
+}
+
+func IsRecordNotFoundError(err error) bool {
+	_, ok := errors.Cause(err).(*recordNotFoundError)
+
+	return ok
+}
+
 type noReadyMembersError struct {
 	clusterGroup ClusterGroupModel
 }
@@ -132,4 +164,31 @@ func IsNoReadyMembersError(err error) bool {
 	_, ok := errors.Cause(err).(*noReadyMembersError)
 
 	return ok
+}
+
+type memberClusterPartOfAClusterGroupError struct {
+	orgID       uint
+	clusterName string
+}
+
+func (e *memberClusterPartOfAClusterGroupError) Error() string {
+	return "member cluster is already part of a cluster group"
+}
+
+func (e *memberClusterPartOfAClusterGroupError) Message() string {
+	return fmt.Sprintf("%s: %s", e.Error(), e.clusterName)
+}
+
+func (e *memberClusterPartOfAClusterGroupError) Context() []interface{} {
+	return []interface{}{
+		"clusterGroupName", e.clusterName,
+		"organizationID", e.orgID,
+	}
+}
+
+// IsMemberClusterPartOfAClusterGroupError returns true if the passed in error designates a cluster group member is already part of a cluster group
+func IsMemberClusterPartOfAClusterGroupError(err error) (*memberClusterPartOfAClusterGroupError, bool) {
+	e, ok := errors.Cause(err).(*memberClusterPartOfAClusterGroupError)
+
+	return e, ok
 }

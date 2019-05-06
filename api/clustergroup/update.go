@@ -23,7 +23,6 @@ import (
 	"github.com/banzaicloud/pipeline/auth"
 	cgroupIAPI "github.com/banzaicloud/pipeline/internal/clustergroup/api"
 	ginutils "github.com/banzaicloud/pipeline/internal/platform/gin/utils"
-	pkgCommon "github.com/banzaicloud/pipeline/pkg/common"
 )
 
 func (n *API) Update(c *gin.Context) {
@@ -34,17 +33,12 @@ func (n *API) Update(c *gin.Context) {
 	}
 
 	var req cgroupIAPI.UpdateRequest
-	if err := c.BindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, pkgCommon.ErrorResponse{
-			Code:    http.StatusBadRequest,
-			Message: "Error parsing request",
-			Error:   err.Error(),
-		})
+	if err := c.ShouldBindJSON(&req); err != nil {
+		n.errorHandler.Handle(c, c.Error(err).SetType(gin.ErrorTypeBind))
 		return
 	}
 
 	orgID := auth.GetCurrentOrganization(c.Request).ID
-
 	err := n.clusterGroupManager.UpdateClusterGroup(ctx, orgID, clusterGroupId, req.Name, req.Members)
 	if err != nil {
 		n.errorHandler.Handle(c, err)

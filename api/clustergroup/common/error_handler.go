@@ -38,6 +38,16 @@ func (e ErrorHandler) Handle(c *gin.Context, err error) {
 
 // errorResponseFrom translates the given error into a components.ErrorResponse
 func (e ErrorHandler) errorResponseFrom(err error) *pkgCommon.ErrorResponse {
+	if e, ok := err.(*gin.Error); ok {
+		if e.IsType(gin.ErrorTypeBind) {
+			return &pkgCommon.ErrorResponse{
+				Code:    http.StatusBadRequest,
+				Message: "Error parsing request",
+				Error:   err.Error(),
+			}
+		}
+	}
+
 	if cgroup.IsClusterGroupNotFoundError(err) {
 		return &pkgCommon.ErrorResponse{
 			Code:    http.StatusNotFound,
@@ -54,11 +64,11 @@ func (e ErrorHandler) errorResponseFrom(err error) *pkgCommon.ErrorResponse {
 		}
 	}
 
-	if cgroup.IsMemberClusterNotFoundError(err) {
+	if err, ok := cgroup.IsMemberClusterNotFoundError(err); ok {
 		return &pkgCommon.ErrorResponse{
 			Code:    http.StatusBadRequest,
 			Error:   err.Error(),
-			Message: err.Error(),
+			Message: err.Message(),
 		}
 	}
 
@@ -75,6 +85,14 @@ func (e ErrorHandler) errorResponseFrom(err error) *pkgCommon.ErrorResponse {
 			Code:    http.StatusBadRequest,
 			Error:   err.Error(),
 			Message: err.Error(),
+		}
+	}
+
+	if err, ok := cgroup.IsMemberClusterPartOfAClusterGroupError(err); ok {
+		return &pkgCommon.ErrorResponse{
+			Code:    http.StatusBadRequest,
+			Error:   err.Error(),
+			Message: err.Message(),
 		}
 	}
 

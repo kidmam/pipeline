@@ -17,19 +17,25 @@ package clustergroup
 import (
 	"encoding/json"
 
-	"github.com/banzaicloud/pipeline/internal/clustergroup/api"
 	"github.com/goph/emperror"
-	"github.com/jinzhu/gorm"
 	"github.com/pkg/errors"
+
+	"github.com/banzaicloud/pipeline/internal/clustergroup/api"
 )
 
-type FeatureHandler interface {
-	ReconcileState(featureState api.Feature) error
-	GetMembersStatus(featureState api.Feature) (map[string]string, error)
+func (g *Manager) RegisterFeatureHandler(featureName string, handler api.FeatureHandler) {
+	g.featureHandlerMap[featureName] = handler
 }
 
-func (g *Manager) RegisterFeatureHandler(featureName string, handler FeatureHandler) {
-	g.featureHandlerMap[featureName] = handler
+func (g *Manager) GetFeatureHandler(featureName string) (api.FeatureHandler, error) {
+	handler := g.featureHandlerMap[featureName]
+	if handler == nil {
+		return nil, &unknownFeature{
+			name: featureName,
+		}
+	}
+
+	return handler, nil
 }
 
 func (g *Manager) GetFeatureStatus(feature api.Feature) (map[string]string, error) {
@@ -107,7 +113,7 @@ func (g *Manager) GetFeatures(clusterGroup api.ClusterGroup) (map[string]api.Fea
 
 	results, err := g.cgRepo.GetAllFeatures(clusterGroup.Id)
 	if err != nil {
-		if gorm.IsRecordNotFoundError(err) {
+		if IsRecordNotFoundError(err) {
 			return features, nil
 		}
 		return nil, emperror.With(err,
@@ -117,14 +123,18 @@ func (g *Manager) GetFeatures(clusterGroup api.ClusterGroup) (map[string]api.Fea
 
 	for _, r := range results {
 		var featureProperties interface{}
-		json.Unmarshal(r.Properties, featureProperties)
-		cgFeature := api.Feature{
+		if r.Properties != nil {
+			err := json.Unmarshal(r.Properties, &featureProperties)
+			if err != nil {
+				g.errorHandler.Handle(err)
+			}
+		}
+		features[r.Name] = api.Feature{
 			Name:         r.Name,
 			Enabled:      r.Enabled,
 			ClusterGroup: clusterGroup,
 			Properties:   featureProperties,
 		}
-		features[r.Name] = cgFeature
 	}
 
 	return features, nil
@@ -135,7 +145,7 @@ func (g *Manager) GetFeature(clusterGroup api.ClusterGroup, featureName string) 
 
 	result, err := g.cgRepo.GetFeature(clusterGroup.Id, featureName)
 	if err != nil {
-		if gorm.IsRecordNotFoundError(err) {
+		if IsRecordNotFoundError(err) {
 			return nil, errors.WithStack(errors.New("cluster group feature not found"))
 		}
 		return nil, emperror.With(err,
@@ -157,33 +167,59 @@ func (g *Manager) GetFeature(clusterGroup api.ClusterGroup, featureName string) 
 	return feature, nil
 }
 
-// SetFeatureParams sets params of a cluster group feature
-func (g *Manager) SetFeatureParams(featureName string, clusterGroup *api.ClusterGroup, enabled bool, properties interface{}) error {
-
+// DisableFeature disable a cluster group feature
+func (g *Manager) DisableFeature(featureName string, clusterGroup *api.ClusterGroup) error {
 	result, err := g.cgRepo.GetFeature(clusterGroup.Id, featureName)
-	if err != nil && !gorm.IsRecordNotFoundError(err) {
+	if err != nil {
 		return emperror.With(err,
 			"clusterGroupId", clusterGroup.Id,
 			"featureName", featureName,
 		)
 	}
 
-	if result == nil {
+	result.Enabled = false
+	err = g.cgRepo.SaveFeature(result)
+	if err != nil {
+		return emperror.Wrap(err, "could not save feature")
+	}
+
+	return nil
+}
+
+// SetFeatureParams sets params of a cluster group feature
+func (g *Manager) SetFeatureParams(featureName string, clusterGroup *api.ClusterGroup, properties interface{}) error {
+	result, err := g.cgRepo.GetFeature(clusterGroup.Id, featureName)
+	if IsRecordNotFoundError(err) {
 		result = &ClusterGroupFeatureModel{
 			Name:           featureName,
 			ClusterGroupID: clusterGroup.Id,
 		}
+	} else if err != nil {
+		return emperror.With(err,
+			"clusterGroupId", clusterGroup.Id,
+			"featureName", featureName,
+		)
 	}
 
-	result.Enabled = enabled
+	handler, err := g.GetFeatureHandler(featureName)
+	if err != nil {
+		return err
+	}
+
+	err = handler.ValidateProperties(properties)
+	if err != nil {
+		return emperror.Wrap(err, "invalid properties")
+	}
+
+	result.Enabled = true
 	result.Properties, err = json.Marshal(properties)
 	if err != nil {
-		return emperror.Wrap(err, "Error marshalling feature properties")
+		return emperror.Wrap(err, "could not marshal feature properties")
 	}
 
 	err = g.cgRepo.SaveFeature(result)
 	if err != nil {
-		return emperror.Wrap(err, "Error saving feature")
+		return emperror.Wrap(err, "could not save feature")
 	}
 
 	return nil

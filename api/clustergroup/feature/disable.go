@@ -20,23 +20,11 @@ import (
 
 	"github.com/gin-gonic/gin"
 
-	cgroupIAPI "github.com/banzaicloud/pipeline/internal/clustergroup/api"
 	ginutils "github.com/banzaicloud/pipeline/internal/platform/gin/utils"
-	pkgCommon "github.com/banzaicloud/pipeline/pkg/common"
 )
 
 func (n *API) Disable(c *gin.Context) {
 	ctx := ginutils.Context(context.Background(), c)
-
-	var req cgroupIAPI.FeatureRequest
-	if err := c.BindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, pkgCommon.ErrorResponse{
-			Code:    http.StatusBadRequest,
-			Message: "Error parsing request",
-			Error:   err.Error(),
-		})
-		return
-	}
 
 	clusterGroupId, ok := ginutils.UintParam(c, "id")
 	if !ok {
@@ -51,7 +39,7 @@ func (n *API) Disable(c *gin.Context) {
 
 	featureName := c.Param("featureName")
 
-	err = n.clusterGroupManager.SetFeatureParams(featureName, clusterGroup, false, req.Properties)
+	err = n.clusterGroupManager.DisableFeature(featureName, clusterGroup)
 	if err != nil {
 		n.errorHandler.Handle(c, err)
 		return

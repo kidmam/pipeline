@@ -15,13 +15,14 @@
 package clustergroup
 
 import (
+	"github.com/gin-gonic/gin"
+	"github.com/goph/emperror"
+	"github.com/sirupsen/logrus"
+
 	"github.com/banzaicloud/pipeline/api/clustergroup/common"
 	"github.com/banzaicloud/pipeline/api/clustergroup/deployment"
 	"github.com/banzaicloud/pipeline/api/clustergroup/feature"
 	cgroup "github.com/banzaicloud/pipeline/internal/clustergroup"
-	"github.com/gin-gonic/gin"
-	"github.com/goph/emperror"
-	"github.com/sirupsen/logrus"
 )
 
 const (
@@ -36,7 +37,7 @@ type API struct {
 	errorHandler        common.ErrorHandler
 }
 
-func New(
+func NewAPI(
 	clusterGroupManager *cgroup.Manager,
 	deploymentManager *cgroup.CGDeploymentManager,
 	logger logrus.FieldLogger,

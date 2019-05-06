@@ -58,7 +58,7 @@ type ClusterGroupFeatureModel struct {
 	Name           string
 	ClusterGroupID uint
 	Enabled        bool
-	Properties     []byte
+	Properties     []byte `sql:"type:json"`
 }
 
 // TableName changes the default table name.

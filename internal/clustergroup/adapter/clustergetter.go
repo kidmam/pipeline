@@ -17,9 +17,10 @@ package adapter
 import (
 	"context"
 
+	"github.com/pkg/errors"
+
 	"github.com/banzaicloud/pipeline/cluster"
 	"github.com/banzaicloud/pipeline/internal/clustergroup/api"
-	"github.com/pkg/errors"
 )
 
 type clusterGetter struct {
@@ -36,6 +37,20 @@ func NewClusterGetter(manager *cluster.Manager) api.ClusterGetter {
 // GetClusterByName returns the cluster instance for an organization ID by cluster name.
 func (m *clusterGetter) GetClusterByName(ctx context.Context, organizationID uint, clusterName string) (api.Cluster, error) {
 	c, err := m.clusterManager.GetClusterByName(ctx, organizationID, clusterName)
+	if err != nil {
+		return nil, err
+	}
+
+	if cluster, ok := c.(api.Cluster); ok {
+		return cluster, nil
+	}
+
+	return nil, errors.New("could not assert to Cluster")
+}
+
+// GetClusterByID returns the cluster instance by organization ID and cluster ID.
+func (m *clusterGetter) GetClusterByID(ctx context.Context, organizationID uint, clusterID uint) (api.Cluster, error) {
+	c, err := m.clusterManager.GetClusterByID(ctx, organizationID, clusterID)
 	if err != nil {
 		return nil, err
 	}
