@@ -77,12 +77,13 @@ type MemberCluster struct {
 
 // ClusterGroup
 type ClusterGroup struct {
-	Id             uint               `json:"id" yaml:"id"`
-	UID            string             `json:"uid" yaml:"uid"`
-	Name           string             `json:"name" yaml:"name"`
-	OrganizationID uint               `json:"organizationId" yaml:"organizationId"`
-	Members        []MemberCluster    `json:"members,omitempty" yaml:"members"`
-	MemberClusters map[string]Cluster `json:"-" yaml:"-"`
+	Id              uint               `json:"id" yaml:"id"`
+	UID             string             `json:"uid" yaml:"uid"`
+	Name            string             `json:"name" yaml:"name"`
+	OrganizationID  uint               `json:"organizationId" yaml:"organizationId"`
+	Members         []MemberCluster    `json:"members,omitempty" yaml:"members"`
+	EnabledFeatures []string           `json:"enabledFeatures,omitempty"`
+	MemberClusters  map[string]Cluster `json:"-" yaml:"-"`
 }
 
 func (g *ClusterGroup) IsMember(clusterName string) bool {

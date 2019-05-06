@@ -46,7 +46,7 @@ func (n *API) Enable(c *gin.Context) {
 
 	featureName := c.Param("featureName")
 
-	err = n.clusterGroupManager.SetFeatureParams(featureName, clusterGroup, req)
+	err = n.clusterGroupManager.EnableFeature(featureName, clusterGroup, req)
 	if err != nil {
 		n.errorHandler.Handle(c, err)
 		return

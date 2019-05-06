@@ -46,7 +46,7 @@ func (g *ClusterGroupRepository) FindOne(cg ClusterGroupModel) (*ClusterGroupMod
 		return nil, errors.New("either clusterGroupId or name is required")
 	}
 	var result ClusterGroupModel
-	err := g.db.Where(cg).Preload("Members").First(&result).Error
+	err := g.db.Where(cg).Preload("Members").Preload("FeatureParams").First(&result).Error
 	if gorm.IsRecordNotFoundError(err) {
 		return nil, errors.WithStack(&clusterGroupNotFoundError{
 			clusterGroup: cg,

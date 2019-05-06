@@ -191,11 +191,29 @@ func (g *Manager) DisableFeature(featureName string, clusterGroup *api.ClusterGr
 	return nil
 }
 
+func (g *Manager) EnableFeature(featureName string, clusterGroup *api.ClusterGroup, properties interface{}) error {
+	err := g.setFeatureParams(featureName, clusterGroup, properties)
+	if err != nil {
+		return emperror.Wrap(err, "could not enable feature")
+	}
+
+	return nil
+}
+
+func (g *Manager) UpdateFeature(featureName string, clusterGroup *api.ClusterGroup, properties interface{}) error {
+	err := g.setFeatureParams(featureName, clusterGroup, properties)
+	if err != nil {
+		return emperror.Wrap(err, "could not update feature")
+	}
+
+	return nil
+}
+
 // SetFeatureParams sets params of a cluster group feature
-func (g *Manager) SetFeatureParams(featureName string, clusterGroup *api.ClusterGroup, properties interface{}) error {
+func (g *Manager) setFeatureParams(featureName string, clusterGroup *api.ClusterGroup, properties interface{}) error {
 	handler, err := g.GetFeatureHandler(featureName)
 	if err != nil {
-		return err
+		return emperror.Wrap(err, "could not get feature handler")
 	}
 
 	err = handler.ValidateProperties(properties)

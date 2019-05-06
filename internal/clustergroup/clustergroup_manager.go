@@ -217,6 +217,14 @@ func (g *Manager) GetClusterGroupFromModel(ctx context.Context, cg *ClusterGroup
 	clusterGroup.Members = make([]api.MemberCluster, 0)
 	clusterGroup.MemberClusters = make(map[string]api.Cluster, 0)
 
+	enabledFeatures := make([]string, 0)
+	for _, feature := range cg.FeatureParams {
+		if feature.Enabled {
+			enabledFeatures = append(enabledFeatures, feature.Name)
+		}
+	}
+	clusterGroup.EnabledFeatures = enabledFeatures
+
 	for _, m := range cg.Members {
 		cluster, err := g.clusterGetter.GetClusterByIDOnly(ctx, m.ClusterID)
 		if err != nil {

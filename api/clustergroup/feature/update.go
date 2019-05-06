@@ -45,7 +45,7 @@ func (n *API) Update(c *gin.Context) {
 	}
 
 	featureName := c.Param("featureName")
-	err = n.clusterGroupManager.SetFeatureParams(featureName, clusterGroup, req)
+	err = n.clusterGroupManager.UpdateFeature(featureName, clusterGroup, req)
 	if err != nil {
 		n.errorHandler.Handle(c, err)
 		return
