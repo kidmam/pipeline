@@ -47,7 +47,7 @@ type ClusterGroupDeploymentModel struct {
 	OrganizationName      string
 	Wait                  bool
 	Timeout               int64
-	Values                []byte
+	Values                []byte                     `sql:"type:text;"`
 	ValueOverrides        []DeploymentValueOverrides `gorm:"foreignkey:ClusterGroupDeploymentID"`
 }
 
@@ -57,5 +57,5 @@ type DeploymentValueOverrides struct {
 	ClusterGroupDeploymentID uint
 	ClusterID                uint
 	ClusterName              string
-	Values                   []byte
+	Values                   []byte `sql:"type:text;"`
 }

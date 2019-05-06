@@ -265,9 +265,10 @@ func main() {
 	}
 	clusterAPI := api.NewClusterAPI(clusterManager, clusterGetter, workflowClient, log, errorHandler, externalBaseURL, clusterCreators, clusterDeleters)
 
-	clusterGroupManager := clustergroup.NewManager(cgroupAdapter.NewClusterGetter(clusterManager), clustergroup.NewClusterGroupRepository(db, log), log, errorHandler)
+	cgroupAdapter := cgroupAdapter.NewClusterGetter(clusterManager)
+	clusterGroupManager := clustergroup.NewManager(cgroupAdapter, clustergroup.NewClusterGroupRepository(db, log), log, errorHandler)
 	federationHandler := clustergroup.NewFederationHandler(log, errorHandler)
-	deploymentManager := clustergroup.NewCGDeploymentManager(db, log, errorHandler)
+	deploymentManager := clustergroup.NewCGDeploymentManager(db, cgroupAdapter, log, errorHandler)
 	clusterGroupManager.RegisterFeatureHandler(clustergroup.FederationFeatureName, federationHandler)
 	clusterGroupManager.RegisterFeatureHandler(clustergroup.DeploymentFeatureName, deploymentManager)
 

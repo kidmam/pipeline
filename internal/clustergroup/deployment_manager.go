@@ -15,12 +15,14 @@
 package clustergroup
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 
 	"github.com/ghodss/yaml"
 	"github.com/goph/emperror"
 	"github.com/jinzhu/gorm"
+	"github.com/pkg/errors"
 	"github.com/prometheus/common/log"
 	"github.com/sirupsen/logrus"
 	k8sHelm "k8s.io/helm/pkg/helm"
@@ -35,14 +37,20 @@ import (
 
 // CGDeploymentManager
 type CGDeploymentManager struct {
-	repository   *CGDeploymentRepository
-	logger       logrus.FieldLogger
-	errorHandler emperror.Handler
+	clusterGetter api.ClusterGetter
+	repository    *CGDeploymentRepository
+	logger        logrus.FieldLogger
+	errorHandler  emperror.Handler
 }
+
+const SUCCEEDED_STATUS = "installed"
+const FAILED_STATUS = "failed"
+const DELETED_STATUS = "deleted"
 
 // NewCGDeploymentManager returns a new CGDeploymentManager instance.
 func NewCGDeploymentManager(
 	db *gorm.DB,
+	clusterGetter api.ClusterGetter,
 	logger logrus.FieldLogger,
 	errorHandler emperror.Handler,
 ) *CGDeploymentManager {
@@ -51,8 +59,9 @@ func NewCGDeploymentManager(
 			db:     db,
 			logger: logger,
 		},
-		logger:       logger,
-		errorHandler: errorHandler,
+		clusterGetter: clusterGetter,
+		logger:        logger,
+		errorHandler:  errorHandler,
 	}
 }
 
@@ -222,9 +231,9 @@ func (m CGDeploymentManager) CreateDeployment(clusterGroup *api.ClusterGroup, or
 		deploymentCount++
 		go func(commonCluster api.Cluster, cgDeployment *clustergroup.ClusterGroupDeployment) {
 			clerr := m.installDeploymentOnCluster(commonCluster, orgName, env, cgDeployment, requestedChart)
-			status := "SUCCEEDED"
+			status := SUCCEEDED_STATUS
 			if clerr != nil {
-				status = fmt.Sprintf("FAILED: %s", clerr.Error())
+				status = fmt.Sprintf("%s: %s", FAILED_STATUS, clerr.Error())
 			}
 			statusChan <- clustergroup.DeploymentStatus{
 				ClusterId:   commonCluster.GetID(),
@@ -281,10 +290,6 @@ func (m CGDeploymentManager) GetDeployment(clusterGroup *api.ClusterGroup, deplo
 
 	deploymentModel, err := m.repository.FindByName(clusterGroup.Id, deploymentName)
 	if err != nil {
-		// TODO create deploymentNotFound error
-		//if gorm.IsRecordNotFoundError(err) {
-		//	return nil, nil
-		//}
 		return nil, err
 	}
 	deployment, err := m.getDeploymentFromModel(deploymentModel)
@@ -350,4 +355,84 @@ func (m CGDeploymentManager) GetAllDeployments(clusterGroup *api.ClusterGroup) (
 	}
 
 	return resultList, nil
+}
+
+func (m CGDeploymentManager) deleteDeploymentFromCluster(clusterId uint, commonCluster api.Cluster, name string) error {
+	if commonCluster == nil {
+		m.logger.Warnf("cluster %v is not member of the cluster group anymore", clusterId)
+	}
+
+	ctx := context.Background()
+	cluster, err := m.clusterGetter.GetClusterByIDOnly(ctx, clusterId)
+	if err != nil {
+		return errors.Wrap(err, "cluster not found anymore")
+	}
+	commonCluster = cluster
+
+	m.logger.Infof("delete deployment from %s", commonCluster.GetName())
+	k8sConfig, err := commonCluster.GetK8sConfig()
+	if err != nil {
+		return err
+	}
+
+	err = helm.DeleteDeployment(name, k8sConfig)
+	if err != nil {
+		m.logger.Errorf("DeleteDeployment for '%s' failed due to: %s", name, err.Error())
+		return err
+	}
+	return nil
+}
+
+func (m CGDeploymentManager) DeleteDeployment(clusterGroup *api.ClusterGroup, deploymentName string, forceDelete bool) (*clustergroup.GetDeploymentResponse, error) {
+
+	deploymentModel, err := m.repository.FindByName(clusterGroup.Id, deploymentName)
+	if err != nil {
+		return nil, err
+	}
+	deployment, err := m.getDeploymentFromModel(deploymentModel)
+	if err != nil {
+		return nil, err
+	}
+
+	// get deployment status for each cluster group member
+	targetClusterStatus := make([]clustergroup.DeploymentStatus, 0)
+
+	deploymentCount := 0
+	statusChan := make(chan clustergroup.DeploymentStatus)
+	defer close(statusChan)
+
+	// there should is an override for each cluster deployment has been deployed to
+	for _, clusterOverride := range deploymentModel.ValueOverrides {
+		deploymentCount++
+		go func(clusterID uint, commonCluster api.Cluster, name string) {
+			clErr := m.deleteDeploymentFromCluster(clusterID, commonCluster, name)
+			status := DELETED_STATUS
+			if clErr != nil {
+				errMsg := fmt.Sprintf("failed to delete cluster: %s", clErr.Error())
+				m.logger.Error(errMsg)
+				if !forceDelete {
+					status = errMsg
+				}
+			}
+			statusChan <- clustergroup.DeploymentStatus{
+				ClusterId:   commonCluster.GetID(),
+				ClusterName: commonCluster.GetName(),
+				Status:      status,
+			}
+		}(clusterOverride.ClusterID, clusterGroup.MemberClusters[clusterOverride.ClusterName], deploymentName)
+	}
+
+	// wait for goroutines to finish
+	for i := 0; i < deploymentCount; i++ {
+		status := <-statusChan
+		targetClusterStatus = append(targetClusterStatus, status)
+	}
+	deployment.TargetClusters = targetClusterStatus
+
+	err = m.repository.Delete(deploymentModel)
+	if err != nil {
+		return nil, err
+	}
+
+	return deployment, nil
 }

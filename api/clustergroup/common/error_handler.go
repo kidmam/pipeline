@@ -80,19 +80,19 @@ func (e ErrorHandler) errorResponseFrom(err error) *pkgCommon.ErrorResponse {
 		}
 	}
 
-	if cgroup.IsClusterGroupHasEnabledFeaturesError(err) {
-		return &pkgCommon.ErrorResponse{
-			Code:    http.StatusBadRequest,
-			Error:   err.Error(),
-			Message: err.Error(),
-		}
-	}
-
 	if err, ok := cgroup.IsMemberClusterPartOfAClusterGroupError(err); ok {
 		return &pkgCommon.ErrorResponse{
 			Code:    http.StatusBadRequest,
 			Error:   err.Error(),
 			Message: err.Message(),
+		}
+	}
+
+	if cgroup.IsDeploymentNotFoundError(err) {
+		return &pkgCommon.ErrorResponse{
+			Code:    http.StatusNotFound,
+			Error:   err.Error(),
+			Message: err.Error(),
 		}
 	}
 

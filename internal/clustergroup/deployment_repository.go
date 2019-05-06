@@ -37,8 +37,16 @@ func (g *CGDeploymentRepository) FindByName(clusterGroupID uint, deploymentName 
 		ClusterGroupID:        clusterGroupID,
 		DeploymentReleaseName: deploymentName,
 	}).Preload("ValueOverrides").First(&result).Error
+
+	if gorm.IsRecordNotFoundError(err) {
+		return nil, errors.WithStack(&deploymentNotFoundError{
+			clusterGroupID: clusterGroupID,
+			deploymentName: deploymentName,
+		})
+	}
 	if err != nil {
 		return nil, emperror.With(err,
+			"clusterGroupID", clusterGroupID,
 			"deploymentName", deploymentName,
 		)
 	}
@@ -53,8 +61,11 @@ func (g *CGDeploymentRepository) FindAll(clusterGroupID uint) ([]*ClusterGroupDe
 	err := g.db.Preload("ValueOverrides").Find(&deployments).Where(&ClusterGroupDeploymentModel{
 		ClusterGroupID: clusterGroupID,
 	}).Error
-	if err != nil {
-		return nil, errors.Wrap(err, "could not fetch cluster group deployments")
+
+	if err != nil && !gorm.IsRecordNotFoundError(err) {
+		return nil, emperror.With(errors.Wrap(err, "could not fetch cluster group deployments"),
+			"clusterGroupID", clusterGroupID,
+		)
 	}
 
 	return deployments, nil
@@ -62,4 +73,21 @@ func (g *CGDeploymentRepository) FindAll(clusterGroupID uint) ([]*ClusterGroupDe
 
 func (g *CGDeploymentRepository) Save(model *ClusterGroupDeploymentModel) error {
 	return g.db.Save(model).Error
+}
+
+// Delete deletes a deployment
+func (g *CGDeploymentRepository) Delete(model *ClusterGroupDeploymentModel) error {
+	for _, v := range model.ValueOverrides {
+		err := g.db.Delete(v).Error
+		if err != nil {
+			return err
+		}
+	}
+
+	err := g.db.Delete(model).Error
+	if err != nil {
+		return err
+	}
+
+	return nil
 }

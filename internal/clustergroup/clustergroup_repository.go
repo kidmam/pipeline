@@ -74,7 +74,7 @@ func (g *ClusterGroupRepository) FindAll() ([]*ClusterGroupModel, error) {
 	return cgroups, nil
 }
 
-// Create persits a cluster group
+// Create persists a cluster group
 func (g *ClusterGroupRepository) Create(name string, orgID uint, memberClusterModels []MemberClusterModel) (*uint, error) {
 	clusterGroupModel := &ClusterGroupModel{
 		Name:           name,

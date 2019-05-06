@@ -109,25 +109,25 @@ func IsMemberClusterNotFoundError(err error) (*memberClusterNotFoundError, bool)
 	return e, ok
 }
 
-type clusterGroupHasEnabledFeaturesError struct {
-	clusterGroupName string
-	featureNames     interface{}
+type deploymentNotFoundError struct {
+	clusterGroupID uint
+	deploymentName string
 }
 
-func (e *clusterGroupHasEnabledFeaturesError) Error() string {
-	return "you have to disable features, before deleting the cluster group"
+func (e *deploymentNotFoundError) Error() string {
+	return "deployment not found"
 }
 
-func (e *clusterGroupHasEnabledFeaturesError) Context() []interface{} {
+func (e *deploymentNotFoundError) Context() []interface{} {
 	return []interface{}{
-		"clusterGroupName", e.clusterGroupName,
-		"featureNames", e.featureNames,
+		"clusterGroupID", e.clusterGroupID,
+		"deploymentName", e.deploymentName,
 	}
 }
 
-// IsClusterGroupHasEnabledFeaturesError returns true if the passed in error designates no ready cluster members found for a cluster group error
-func IsClusterGroupHasEnabledFeaturesError(err error) bool {
-	_, ok := errors.Cause(err).(*clusterGroupHasEnabledFeaturesError)
+// IsDeploymentNotFoundError returns true if the passed in error designates a deployment not found error
+func IsDeploymentNotFoundError(err error) bool {
+	_, ok := errors.Cause(err).(*deploymentNotFoundError)
 
 	return ok
 }
