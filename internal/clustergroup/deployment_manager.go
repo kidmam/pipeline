@@ -135,10 +135,50 @@ func (m CGDeploymentManager) installDeploymentOnCluster(commonCluster api.Cluste
 		installOptions...,
 	)
 	if err != nil {
-		return fmt.Errorf("Error deploying chart: %v", err)
+		return fmt.Errorf("error deploying chart: %v", err)
 	}
 
 	m.logger.Infof("Installing deployment on %s succeeded: %s", commonCluster.GetName(), release.String())
+	return nil
+}
+
+func (m CGDeploymentManager) upgradeDeploymentOnCluster(commonCluster api.Cluster, orgName string, env helm_env.EnvSettings, cgDeployment *clustergroup.ClusterGroupDeployment, requestedChart *chart.Chart) error {
+	m.logger.Infof("Upgrading deployment on %s", commonCluster.GetName())
+	k8sConfig, err := commonCluster.GetK8sConfig()
+	if err != nil {
+		return err
+	}
+
+	values := cgDeployment.Values
+	clusterSpecificOverrides, exists := cgDeployment.ValueOverrides[commonCluster.GetName()]
+	// merge values with overrides for cluster if any
+	if exists {
+		values = helm.MergeValues(cgDeployment.Values, clusterSpecificOverrides)
+	}
+	marshalledValues, err := yaml.Marshal(values)
+	if err != nil {
+		return err
+	}
+
+	hClient, err := pkgHelm.NewClient(k8sConfig, m.logger)
+	if err != nil {
+		return err
+	}
+	defer hClient.Close()
+
+	upgradeRes, err := hClient.UpdateReleaseFromChart(
+		cgDeployment.ReleaseName,
+		requestedChart,
+		k8sHelm.UpdateValueOverrides(marshalledValues),
+		k8sHelm.UpgradeDryRun(false),
+		//helm.ResetValues(u.resetValues),
+		k8sHelm.ReuseValues(false),
+	)
+	if err != nil {
+		return fmt.Errorf("error deploying chart: %v", err)
+	}
+
+	m.logger.Infof("Upgrading deployment on %s succeeded: %s", commonCluster.GetName(), upgradeRes.String())
 	return nil
 }
 
@@ -200,6 +240,39 @@ func (m CGDeploymentManager) createDeploymentModel(clusterGroup *api.ClusterGrou
 	return deploymentModel, nil
 }
 
+func (m CGDeploymentManager) updateDeploymentModel(clusterGroup *api.ClusterGroup, deploymentModel *ClusterGroupDeploymentModel, cgDeployment *clustergroup.ClusterGroupDeployment, requestedChart *chart.Chart) error {
+	deploymentModel.DeploymentVersion = cgDeployment.Version
+	deploymentModel.Description = requestedChart.Metadata.Description
+	deploymentModel.ChartName = requestedChart.Metadata.Name
+
+	if cgDeployment.ReUseValues {
+		return nil
+	}
+	//TODO merge values
+	values, err := json.Marshal(cgDeployment.Values)
+	if err != nil {
+		return err
+	}
+	deploymentModel.Values = values
+	deploymentModel.ValueOverrides = make([]DeploymentValueOverrides, 0)
+	for clusterName, cluster := range clusterGroup.MemberClusters {
+		valueOverrideModel := DeploymentValueOverrides{
+			ClusterID:   cluster.GetID(),
+			ClusterName: clusterName,
+		}
+		if valuesOverride, ok := cgDeployment.ValueOverrides[clusterName]; ok {
+			marshalledValues, err := json.Marshal(valuesOverride)
+			if err != nil {
+				return err
+			}
+			valueOverrideModel.Values = marshalledValues
+		}
+		deploymentModel.ValueOverrides = append(deploymentModel.ValueOverrides, valueOverrideModel)
+	}
+
+	return nil
+}
+
 func (m CGDeploymentManager) CreateDeployment(clusterGroup *api.ClusterGroup, orgName string, cgDeployment *clustergroup.ClusterGroupDeployment) ([]clustergroup.DeploymentStatus, error) {
 
 	env := helm.GenerateHelmRepoEnv(orgName)
@@ -222,9 +295,11 @@ func (m CGDeploymentManager) CreateDeployment(clusterGroup *api.ClusterGroup, or
 	if err != nil {
 		return nil, emperror.Wrap(err, "Error creating deployment model")
 	}
-	err = m.repository.Save(deploymentModel)
-	if err != nil {
-		return nil, emperror.Wrap(err, "Error saving deployment model")
+	if !cgDeployment.DryRun {
+		err = m.repository.Save(deploymentModel)
+		if err != nil {
+			return nil, emperror.Wrap(err, "Error saving deployment model")
+		}
 	}
 
 	// install charts on cluster group members
@@ -399,13 +474,10 @@ func (m CGDeploymentManager) deleteDeploymentFromCluster(clusterId uint, commonC
 	return nil
 }
 
-func (m CGDeploymentManager) DeleteDeployment(clusterGroup *api.ClusterGroup, deploymentName string, forceDelete bool) (*clustergroup.GetDeploymentResponse, error) {
+// DeleteDeployment deletes deployments from targeted clusters
+func (m CGDeploymentManager) DeleteDeployment(clusterGroup *api.ClusterGroup, deploymentName string, forceDelete bool) ([]clustergroup.DeploymentStatus, error) {
 
 	deploymentModel, err := m.repository.FindByName(clusterGroup.Id, deploymentName)
-	if err != nil {
-		return nil, err
-	}
-	deployment, err := m.getDeploymentFromModel(deploymentModel)
 	if err != nil {
 		return nil, err
 	}
@@ -443,7 +515,6 @@ func (m CGDeploymentManager) DeleteDeployment(clusterGroup *api.ClusterGroup, de
 		status := <-statusChan
 		targetClusterStatus = append(targetClusterStatus, status)
 	}
-	deployment.TargetClusters = targetClusterStatus
 
 	//TODO delete succeeded or all if force
 	err = m.repository.Delete(deploymentModel)
@@ -451,5 +522,73 @@ func (m CGDeploymentManager) DeleteDeployment(clusterGroup *api.ClusterGroup, de
 		return nil, err
 	}
 
-	return deployment, nil
+	return targetClusterStatus, nil
+}
+
+// UpdateDeployment upgrades deployment using provided values or using already provided values if ReUseValues = true.
+// The deployment is installed on a member cluster in case it's was not installed previously.
+func (m CGDeploymentManager) UpdateDeployment(clusterGroup *api.ClusterGroup, orgName string, cgDeployment *clustergroup.ClusterGroupDeployment) ([]clustergroup.DeploymentStatus, error) {
+
+	env := helm.GenerateHelmRepoEnv(orgName)
+	requestedChart, err := helm.GetRequestedChart(cgDeployment.ReleaseName, cgDeployment.Name, cgDeployment.Version, cgDeployment.Package, env)
+	if err != nil {
+		return nil, fmt.Errorf("error loading chart: %v", err)
+	}
+
+	if len(cgDeployment.Version) == 0 {
+		cgDeployment.Version = requestedChart.Metadata.Version
+	}
+
+	if cgDeployment.Namespace == "" {
+		log.Warn("Deployment namespace was not set failing back to default")
+		cgDeployment.Namespace = helm.DefaultNamespace
+	}
+
+	// get deployment
+	deploymentModel, err := m.repository.FindByName(clusterGroup.Id, cgDeployment.Name)
+	if err != nil {
+		return nil, err
+	}
+
+	// if reUseValues = false update values / valueOverrides from request
+	err = m.updateDeploymentModel(clusterGroup, deploymentModel, cgDeployment, requestedChart)
+	if err != nil {
+		return nil, emperror.Wrap(err, "Error updating deployment model")
+	}
+	err = m.repository.Save(deploymentModel)
+	if err != nil {
+		return nil, emperror.Wrap(err, "Error saving deployment model")
+	}
+
+	targetClusterStatus := make([]clustergroup.DeploymentStatus, 0)
+	deploymentCount := 0
+	statusChan := make(chan clustergroup.DeploymentStatus)
+	defer close(statusChan)
+
+	// upgrade & install deployments
+	for _, commonCluster := range clusterGroup.MemberClusters {
+		deploymentCount++
+		go func(commonCluster api.Cluster, cgDeployment *clustergroup.ClusterGroupDeployment) {
+			//TODO install or upgrade
+			clerr := m.upgradeDeploymentOnCluster(commonCluster, orgName, env, cgDeployment, requestedChart)
+			status := SUCCEEDED_STATUS
+			if clerr != nil {
+				status = fmt.Sprintf("%s: %s", FAILED_STATUS, clerr.Error())
+			}
+			statusChan <- clustergroup.DeploymentStatus{
+				ClusterId:   commonCluster.GetID(),
+				ClusterName: commonCluster.GetName(),
+				Status:      status,
+			}
+		}(commonCluster, cgDeployment)
+
+	}
+
+	// wait for goroutines to finish
+	for i := 0; i < deploymentCount; i++ {
+		status := <-statusChan
+		targetClusterStatus = append(targetClusterStatus, status)
+	}
+
+	return targetClusterStatus, nil
 }

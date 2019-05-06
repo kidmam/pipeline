@@ -15,12 +15,61 @@
 package deployment
 
 import (
+	"context"
 	"net/http"
 
+	"github.com/banzaicloud/pipeline/auth"
+	"github.com/banzaicloud/pipeline/internal/platform/gin/utils"
+	"github.com/banzaicloud/pipeline/pkg/clustergroup"
+	pkgCommon "github.com/banzaicloud/pipeline/pkg/common"
 	"github.com/gin-gonic/gin"
 )
 
 func (n *API) Upgrade(c *gin.Context) {
-	c.Status(http.StatusAccepted)
+	ctx := ginutils.Context(context.Background(), c)
+
+	name := c.Param("name")
+
+	clusterGroupId, ok := ginutils.UintParam(c, "id")
+	if !ok {
+		return
+	}
+
+	clusterGroup, err := n.clusterGroupManager.GetClusterGroupById(ctx, clusterGroupId)
+	if err != nil {
+		n.errorHandler.Handle(c, err)
+		return
+	}
+
+	organization, err := auth.GetOrganizationById(clusterGroup.OrganizationID)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, pkgCommon.ErrorResponse{
+			Code:    http.StatusBadRequest,
+			Message: "Error  getting organization",
+			Error:   err.Error(),
+		})
+		return
+	}
+	var deployment *clustergroup.ClusterGroupDeployment
+	if err := c.ShouldBindJSON(&deployment); err != nil {
+		n.errorHandler.Handle(c, c.Error(err).SetType(gin.ErrorTypeBind))
+		return
+	}
+
+	deployment.ReleaseName = name
+
+	targetClusterStatus, err := n.deploymentManager.UpdateDeployment(clusterGroup, organization.Name, deployment)
+	if err != nil {
+		n.errorHandler.Handle(c, err)
+		return
+	}
+
+	n.logger.Debug("Release name: ", deployment.ReleaseName)
+	response := clustergroup.CreateUpdateDeploymentResponse{
+		ReleaseName:    deployment.ReleaseName,
+		TargetClusters: targetClusterStatus,
+	}
+
+	c.JSON(http.StatusAccepted, response)
 	return
 }
