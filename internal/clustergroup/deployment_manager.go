@@ -25,6 +25,7 @@ import (
 	"github.com/pkg/errors"
 	"github.com/prometheus/common/log"
 	"github.com/sirupsen/logrus"
+	"github.com/technosophos/moniker"
 	k8sHelm "k8s.io/helm/pkg/helm"
 	helm_env "k8s.io/helm/pkg/helm/environment"
 	"k8s.io/helm/pkg/proto/hapi/chart"
@@ -43,9 +44,10 @@ type CGDeploymentManager struct {
 	errorHandler  emperror.Handler
 }
 
-const SUCCEEDED_STATUS = "installed"
+const SUCCEEDED_STATUS = "deployed"
 const FAILED_STATUS = "failed"
 const DELETED_STATUS = "deleted"
+const releaseNameMaxLen = 53
 
 // NewCGDeploymentManager returns a new CGDeploymentManager instance.
 func NewCGDeploymentManager(
@@ -66,7 +68,7 @@ func NewCGDeploymentManager(
 }
 
 func (m *CGDeploymentManager) ReconcileState(featureState api.Feature) error {
-	//TODO delete deployment from a cluster leaving the group,, delete all deployments of a group if featureState.Enabled = false
+	//TODO delete deployment from a cluster leaving the group, delete all deployments of a group if featureState.Enabled = false
 	m.logger.Infof("reconcile deployments on group: %v", featureState.ClusterGroup.Name)
 	return nil
 }
@@ -87,7 +89,7 @@ func (m *CGDeploymentManager) GetMembersStatus(featureState api.Feature) (map[st
 	return statusMap, nil
 }
 
-func (m CGDeploymentManager) installDeploymentOnCluster(commonCluster api.Cluster, orgName string, env helm_env.EnvSettings, cgDeployment *clustergroup.ClusterGroupDeployment, chartRequested *chart.Chart) error {
+func (m CGDeploymentManager) installDeploymentOnCluster(commonCluster api.Cluster, orgName string, env helm_env.EnvSettings, cgDeployment *clustergroup.ClusterGroupDeployment, requestedChart *chart.Chart) error {
 	m.logger.Infof("Installing deployment on %s", commonCluster.GetName())
 	k8sConfig, err := commonCluster.GetK8sConfig()
 	if err != nil {
@@ -128,7 +130,7 @@ func (m CGDeploymentManager) installDeploymentOnCluster(commonCluster api.Cluste
 	installOptions = append(installOptions, overrideOpts...)
 
 	release, err := hClient.InstallReleaseFromChart(
-		chartRequested,
+		requestedChart,
 		cgDeployment.Namespace,
 		installOptions...,
 	)
@@ -206,6 +208,10 @@ func (m CGDeploymentManager) CreateDeployment(clusterGroup *api.ClusterGroup, or
 		return nil, fmt.Errorf("error loading chart: %v", err)
 	}
 
+	if len(cgDeployment.Version) == 0 {
+		cgDeployment.Version = requestedChart.Metadata.Version
+	}
+
 	if cgDeployment.Namespace == "" {
 		log.Warn("Deployment namespace was not set failing back to default")
 		cgDeployment.Namespace = helm.DefaultNamespace
@@ -257,13 +263,14 @@ func (m CGDeploymentManager) getDeploymentFromModel(deploymentModel *ClusterGrou
 	deployment := &clustergroup.GetDeploymentResponse{
 		ReleaseName:  deploymentModel.DeploymentReleaseName,
 		Chart:        deploymentModel.DeploymentName,
-		Version:      0, //deploymentModel.DeploymentVersion ,
+		ChartName:    deploymentModel.ChartName,
 		Description:  deploymentModel.Description,
-		ChartName:    deploymentModel.DeploymentName,
 		ChartVersion: deploymentModel.DeploymentVersion,
 		Namespace:    deploymentModel.Namespace,
 		CreatedAt:    deploymentModel.CreatedAt,
-		Updated:      deploymentModel.UpdatedAt,
+	}
+	if deploymentModel.UpdatedAt != nil {
+		deployment.UpdatedAt = *deploymentModel.UpdatedAt
 	}
 	var values map[string]interface{}
 	err := json.Unmarshal(deploymentModel.Values, &values)
@@ -331,14 +338,19 @@ func (m CGDeploymentManager) GetDeployment(clusterGroup *api.ClusterGroup, deplo
 	return deployment, nil
 }
 
+func (m CGDeploymentManager) GenerateReleaseName(clusterGroup *api.ClusterGroup) string {
+	moniker := moniker.New()
+	name := moniker.NameSep("-")
+	if len(name) > releaseNameMaxLen {
+		name = name[:releaseNameMaxLen]
+	}
+	return name
+}
+
 func (m CGDeploymentManager) GetAllDeployments(clusterGroup *api.ClusterGroup) ([]*clustergroup.ListDeploymentResponse, error) {
 
 	deploymentModels, err := m.repository.FindAll(clusterGroup.Id)
 	if err != nil {
-		// TODO create deploymentNotFound error
-		//if gorm.IsRecordNotFoundError(err) {
-		//	return nil, nil
-		//}
 		return nil, err
 	}
 	resultList := make([]*clustergroup.ListDeploymentResponse, 0)
@@ -349,8 +361,10 @@ func (m CGDeploymentManager) GetAllDeployments(clusterGroup *api.ClusterGroup) (
 			ChartName:    deploymentModel.ChartName,
 			ChartVersion: deploymentModel.DeploymentVersion,
 			Namespace:    deploymentModel.Namespace,
-			Version:      0, //deploymentModel.DeploymentVersion ,
 			CreatedAt:    deploymentModel.CreatedAt,
+		}
+		if deploymentModel.UpdatedAt != nil {
+			deployment.UpdatedAt = *deploymentModel.UpdatedAt
 		}
 		resultList = append(resultList, deployment)
 
@@ -403,7 +417,7 @@ func (m CGDeploymentManager) DeleteDeployment(clusterGroup *api.ClusterGroup, de
 	statusChan := make(chan clustergroup.DeploymentStatus)
 	defer close(statusChan)
 
-	// there should is an override for each cluster deployment has been deployed to
+	// there should be an override for each cluster deployment has been deployed to
 	for _, clusterOverride := range deploymentModel.ValueOverrides {
 		deploymentCount++
 		go func(clusterID uint, commonCluster api.Cluster, name string) {
@@ -431,6 +445,7 @@ func (m CGDeploymentManager) DeleteDeployment(clusterGroup *api.ClusterGroup, de
 	}
 	deployment.TargetClusters = targetClusterStatus
 
+	//TODO delete succeeded or all if force
 	err = m.repository.Delete(deploymentModel)
 	if err != nil {
 		return nil, err

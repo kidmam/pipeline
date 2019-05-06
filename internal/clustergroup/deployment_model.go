@@ -35,7 +35,7 @@ type ClusterGroupDeploymentModel struct {
 	ID                    uint `gorm:"primary_key"`
 	ClusterGroupID        uint
 	CreatedAt             time.Time
-	UpdatedAt             time.Time
+	UpdatedAt             *time.Time
 	DeletedAt             *time.Time `gorm:"unique_index:idx_unique_id" sql:"index"`
 	DeploymentName        string
 	DeploymentVersion     string

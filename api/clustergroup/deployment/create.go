@@ -17,13 +17,11 @@ package deployment
 import (
 	"context"
 	"net/http"
-	"strings"
 
 	"github.com/gin-gonic/gin"
 
 	"github.com/banzaicloud/pipeline/auth"
-	"github.com/banzaicloud/pipeline/helm"
-	ginutils "github.com/banzaicloud/pipeline/internal/platform/gin/utils"
+	"github.com/banzaicloud/pipeline/internal/platform/gin/utils"
 	"github.com/banzaicloud/pipeline/pkg/clustergroup"
 	pkgCommon "github.com/banzaicloud/pipeline/pkg/common"
 )
@@ -58,8 +56,9 @@ func (n *API) Create(c *gin.Context) {
 		return
 	}
 
-	if len(strings.TrimSpace(deployment.ReleaseName)) == 0 {
-		deployment.ReleaseName, _ = helm.GenerateName("")
+	//TODO check release name uniqueness
+	if len(deployment.ReleaseName) == 0 {
+		deployment.ReleaseName = n.deploymentManager.GenerateReleaseName(clusterGroup)
 	}
 
 	targetClusterStatus, err := n.deploymentManager.CreateDeployment(clusterGroup, organization.Name, deployment)

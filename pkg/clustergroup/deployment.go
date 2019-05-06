@@ -57,10 +57,10 @@ type GetDeploymentResponse struct {
 	ChartName      string                 `json:"chartName"`
 	ChartVersion   string                 `json:"chartVersion"`
 	Namespace      string                 `json:"namespace"`
-	Version        int32                  `json:"version"`
+	Version        int32                  `json:"version,omitempty"`
 	Description    string                 `json:"description"`
 	CreatedAt      time.Time              `json:"createdAt,omitempty"`
-	Updated        time.Time              `json:"updatedAt,omitempty"`
+	UpdatedAt      time.Time              `json:"updatedAt,omitempty"`
 	Values         interface{}            `json:"values"`
 	ValueOverrides map[string]interface{} `json:"valueOverrides,omitempty" yaml:"valueOverrides,omitempty"`
 	TargetClusters []DeploymentStatus     `json:"targetClusters"`
@@ -72,14 +72,14 @@ type ListDeploymentResponse struct {
 	Chart        string    `json:"chart"`
 	ChartName    string    `json:"chartName"`
 	ChartVersion string    `json:"chartVersion"`
-	Version      int32     `json:"version"`
+	Version      int32     `json:"version,omitempty"`
 	UpdatedAt    time.Time `json:"updatedAt"`
 	Namespace    string    `json:"namespace"`
 	CreatedAt    time.Time `json:"createdAt,omitempty"`
 	//Supported      bool               `json:"supported"`
 	//WhiteListed    bool               `json:"whiteListed"`
 	//Rejected       bool               `json:"rejected"`
-	TargetClusters []DeploymentStatus `json:"targetClusters"`
+	//TargetClusters []DeploymentStatus `json:"targetClusters"`
 }
 
 // DeleteResponse describes a deployment delete response
