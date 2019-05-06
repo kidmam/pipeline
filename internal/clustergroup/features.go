@@ -18,7 +18,6 @@ import (
 	"encoding/json"
 
 	"github.com/goph/emperror"
-	"github.com/pkg/errors"
 
 	"github.com/banzaicloud/pipeline/internal/clustergroup/api"
 )
@@ -141,17 +140,12 @@ func (g *Manager) GetFeatures(clusterGroup api.ClusterGroup) (map[string]api.Fea
 
 // GetFeature returns params of a cluster group feature by clusterGroupId and feature name
 func (g *Manager) GetFeature(clusterGroup api.ClusterGroup, featureName string) (*api.Feature, error) {
-
 	result, err := g.cgRepo.GetFeature(clusterGroup.Id, featureName)
 	if err != nil {
-		if IsRecordNotFoundError(err) {
-			return nil, errors.WithStack(errors.New("cluster group feature not found"))
-		}
 		return nil, emperror.With(err,
 			"clusterGroupId", clusterGroup.Id,
 			"featureName", featureName,
 		)
-
 	}
 
 	var featureProperties interface{}
@@ -168,6 +162,15 @@ func (g *Manager) GetFeature(clusterGroup api.ClusterGroup, featureName string) 
 
 // DisableFeature disable a cluster group feature
 func (g *Manager) DisableFeature(featureName string, clusterGroup *api.ClusterGroup) error {
+	err := g.disableFeature(featureName, clusterGroup)
+	if err != nil {
+		return emperror.Wrap(err, "could not disable feature")
+	}
+
+	return nil
+}
+
+func (g *Manager) disableFeature(featureName string, clusterGroup *api.ClusterGroup) error {
 	_, err := g.GetFeatureHandler(featureName)
 	if err != nil {
 		return err
@@ -221,7 +224,7 @@ func (g *Manager) setFeatureParams(featureName string, clusterGroup *api.Cluster
 	}
 
 	result, err := g.cgRepo.GetFeature(clusterGroup.Id, featureName)
-	if IsRecordNotFoundError(err) {
+	if IsFeatureRecordNotFoundError(err) {
 		result = &ClusterGroupFeatureModel{
 			Name:           featureName,
 			ClusterGroupID: clusterGroup.Id,

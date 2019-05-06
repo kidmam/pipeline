@@ -31,7 +31,7 @@ func (n *API) Delete(c *gin.Context) {
 		return
 	}
 
-	err := n.clusterGroupManager.DeleteClusterGroup(ctx, clusterGroupId)
+	err := n.clusterGroupManager.DeleteClusterGroupByID(ctx, clusterGroupId)
 	if err != nil {
 		n.errorHandler.Handle(c, err)
 		return

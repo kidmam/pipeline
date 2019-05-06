@@ -35,17 +35,22 @@ func NewFederationHandler(
 	errorHandler emperror.Handler,
 ) *FederationHandler {
 	return &FederationHandler{
-		logger:       logger,
+		logger:       logger.WithField("feature", FederationFeatureName),
 		errorHandler: errorHandler,
 	}
 }
 
 func (f *FederationHandler) ReconcileState(featureState api.Feature) error {
-	f.logger.Infof("federation enabled %v on group: %v", featureState.Enabled, featureState.ClusterGroup.Name)
+	logger := f.logger.WithField("clusterGroupName", featureState.ClusterGroup.Name)
+	logger.Info("reconcile federation")
+
 	return nil
 }
 
 func (f *FederationHandler) ValidateState(featureState api.Feature) error {
+	logger := f.logger.WithField("clusterGroupName", featureState.ClusterGroup.Name)
+	logger.Info("validate update state")
+
 	return nil
 }
 

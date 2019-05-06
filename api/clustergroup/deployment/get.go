@@ -34,7 +34,7 @@ func (n *API) Get(c *gin.Context) {
 		return
 	}
 
-	clusterGroup, err := n.clusterGroupManager.GetClusterGroupById(ctx, clusterGroupId)
+	clusterGroup, err := n.clusterGroupManager.GetClusterGroupByID(ctx, clusterGroupId)
 	if err != nil {
 		n.errorHandler.Handle(c, err)
 		return

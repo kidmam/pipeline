@@ -48,19 +48,26 @@ func (e ErrorHandler) errorResponseFrom(err error) *pkgCommon.ErrorResponse {
 		}
 	}
 
-	if cgroup.IsClusterGroupNotFoundError(err) {
+	var code int
+	if cgroup.IsClusterGroupNotFoundError(err) || cgroup.IsDeploymentNotFoundError(err) || cgroup.IsFeatureRecordNotFoundError(err) {
+		code = http.StatusNotFound
+	} else if cgroup.IsClusterGroupAlreadyExistsError(err) || cgroup.IsNoReadyMembersError(err) {
+		code = http.StatusBadRequest
+	}
+
+	if code > 0 {
 		return &pkgCommon.ErrorResponse{
-			Code:    http.StatusNotFound,
+			Code:    code,
 			Error:   err.Error(),
 			Message: err.Error(),
 		}
 	}
 
-	if cgroup.IsClusterGroupAlreadyExistsError(err) {
+	if err, ok := cgroup.IsClusterGroupUpdateRejectedError(err); ok {
 		return &pkgCommon.ErrorResponse{
 			Code:    http.StatusBadRequest,
 			Error:   err.Error(),
-			Message: err.Error(),
+			Message: err.Message(),
 		}
 	}
 
@@ -72,27 +79,11 @@ func (e ErrorHandler) errorResponseFrom(err error) *pkgCommon.ErrorResponse {
 		}
 	}
 
-	if cgroup.IsNoReadyMembersError(err) {
-		return &pkgCommon.ErrorResponse{
-			Code:    http.StatusBadRequest,
-			Error:   err.Error(),
-			Message: err.Error(),
-		}
-	}
-
 	if err, ok := cgroup.IsMemberClusterPartOfAClusterGroupError(err); ok {
 		return &pkgCommon.ErrorResponse{
 			Code:    http.StatusBadRequest,
 			Error:   err.Error(),
 			Message: err.Message(),
-		}
-	}
-
-	if cgroup.IsDeploymentNotFoundError(err) {
-		return &pkgCommon.ErrorResponse{
-			Code:    http.StatusNotFound,
-			Error:   err.Error(),
-			Message: err.Error(),
 		}
 	}
 

@@ -15,8 +15,11 @@
 package main
 
 import (
+	"github.com/jinzhu/gorm"
+	"github.com/sirupsen/logrus"
+
 	"github.com/banzaicloud/pipeline/auth"
-	"github.com/banzaicloud/pipeline/dns/route53/model"
+	route53model "github.com/banzaicloud/pipeline/dns/route53/model"
 	"github.com/banzaicloud/pipeline/internal/ark"
 	"github.com/banzaicloud/pipeline/internal/audit"
 	"github.com/banzaicloud/pipeline/internal/cluster"
@@ -26,8 +29,6 @@ import (
 	"github.com/banzaicloud/pipeline/model"
 	"github.com/banzaicloud/pipeline/model/defaults"
 	"github.com/banzaicloud/pipeline/spotguide"
-	"github.com/jinzhu/gorm"
-	"github.com/sirupsen/logrus"
 )
 
 // Migrate runs migrations for the application.

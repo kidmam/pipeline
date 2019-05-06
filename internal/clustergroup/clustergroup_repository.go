@@ -160,7 +160,7 @@ func (g *ClusterGroupRepository) GetFeature(clusterGroupID uint, featureName str
 	}).First(&result).Error
 
 	if gorm.IsRecordNotFoundError(err) {
-		return nil, errors.WithStack(&recordNotFoundError{})
+		return nil, errors.WithStack(&featureRecordNotFoundError{})
 	}
 
 	if err != nil {

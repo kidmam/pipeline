@@ -31,7 +31,7 @@ func (a *API) Get(c *gin.Context) {
 		return
 	}
 
-	response, err := a.clusterGroupManager.GetClusterGroupByIdWithStatus(ctx, cgId, true)
+	response, err := a.clusterGroupManager.GetClusterGroupByIDWithStatus(ctx, cgId, true)
 	if err != nil {
 		a.errorHandler.Handle(c, err)
 		return

@@ -34,6 +34,13 @@ func (e *unknownFeature) Context() []interface{} {
 	}
 }
 
+// IsUnknownFeatureError returns true if the passed in error designates an unknown feature (no registered handler) error
+func IsUnknownFeatureError(err error) bool {
+	_, ok := errors.Cause(err).(*clusterGroupNotFoundError)
+
+	return ok
+}
+
 type clusterGroupNotFoundError struct {
 	clusterGroup ClusterGroupModel
 }
@@ -49,15 +56,11 @@ func (e *clusterGroupNotFoundError) Context() []interface{} {
 	}
 }
 
-func (e *clusterGroupNotFoundError) NotFound() bool {
-	return true
-}
-
 // IsClusterGroupNotFoundError returns true if the passed in error designates a cluster group not found error
 func IsClusterGroupNotFoundError(err error) bool {
-	notFoundErr, ok := errors.Cause(err).(*clusterGroupNotFoundError)
+	_, ok := errors.Cause(err).(*clusterGroupNotFoundError)
 
-	return ok && notFoundErr.NotFound()
+	return ok
 }
 
 type clusterGroupAlreadyExistsError struct {
@@ -138,10 +141,49 @@ func (e *recordNotFoundError) Error() string {
 	return "record not found"
 }
 
+// IsRecordNotFoundError returns true if the passed in error designates that a DB record not found
 func IsRecordNotFoundError(err error) bool {
 	_, ok := errors.Cause(err).(*recordNotFoundError)
 
 	return ok
+}
+
+type featureRecordNotFoundError struct{}
+
+func (e *featureRecordNotFoundError) Error() string {
+	return "feature not found"
+}
+
+// IsFeatureRecordNotFoundError returns true if the passed in error designates that a feature DB record not found
+func IsFeatureRecordNotFoundError(err error) bool {
+	_, ok := errors.Cause(err).(*featureRecordNotFoundError)
+
+	return ok
+}
+
+type clusterGroupUpdateRejectedError struct {
+	featureName string
+}
+
+func (e *clusterGroupUpdateRejectedError) Error() string {
+	return "update rejected by feature handler"
+}
+
+func (e *clusterGroupUpdateRejectedError) Message() string {
+	return fmt.Sprintf("%s: %s", e.Error(), e.featureName)
+}
+
+func (e *clusterGroupUpdateRejectedError) Context() []interface{} {
+	return []interface{}{
+		"featureName", e.featureName,
+	}
+}
+
+// IsClusterGroupUpdateRejectedError returns true if the passed in error designates that a cluster group update is denied by an enabled feature's handler
+func IsClusterGroupUpdateRejectedError(err error) (*clusterGroupUpdateRejectedError, bool) {
+	e, ok := errors.Cause(err).(*clusterGroupUpdateRejectedError)
+
+	return e, ok
 }
 
 type noReadyMembersError struct {

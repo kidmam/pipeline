@@ -222,12 +222,12 @@ func (m CGDeploymentManager) createDeploymentModel(clusterGroup *api.ClusterGrou
 	}
 	deploymentModel.Values = values
 	deploymentModel.ValueOverrides = make([]DeploymentValueOverrides, 0)
-	for clusterName, cluster := range clusterGroup.MemberClusters {
+	for _, cluster := range clusterGroup.MemberClusters {
 		valueOverrideModel := DeploymentValueOverrides{
 			ClusterID:   cluster.GetID(),
-			ClusterName: clusterName,
+			ClusterName: cluster.GetName(),
 		}
-		if valuesOverride, ok := cgDeployment.ValueOverrides[clusterName]; ok {
+		if valuesOverride, ok := cgDeployment.ValueOverrides[cluster.GetName()]; ok {
 			marshalledValues, err := json.Marshal(valuesOverride)
 			if err != nil {
 				return nil, err
@@ -507,7 +507,7 @@ func (m CGDeploymentManager) DeleteDeployment(clusterGroup *api.ClusterGroup, de
 				ClusterName: commonCluster.GetName(),
 				Status:      status,
 			}
-		}(clusterOverride.ClusterID, clusterGroup.MemberClusters[clusterOverride.ClusterName], deploymentName)
+		}(clusterOverride.ClusterID, clusterGroup.MemberClusters[clusterOverride.ClusterID], deploymentName)
 	}
 
 	// wait for goroutines to finish

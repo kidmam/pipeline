@@ -19,8 +19,9 @@ import (
 	"net/http"
 	"strconv"
 
-	"github.com/banzaicloud/pipeline/internal/platform/gin/utils"
 	"github.com/gin-gonic/gin"
+
+	ginutils "github.com/banzaicloud/pipeline/internal/platform/gin/utils"
 )
 
 func (n *API) Delete(c *gin.Context) {
@@ -36,7 +37,7 @@ func (n *API) Delete(c *gin.Context) {
 		return
 	}
 
-	clusterGroup, err := n.clusterGroupManager.GetClusterGroupById(ctx, clusterGroupId)
+	clusterGroup, err := n.clusterGroupManager.GetClusterGroupByID(ctx, clusterGroupId)
 	if err != nil {
 		n.errorHandler.Handle(c, err)
 		return
