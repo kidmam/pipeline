@@ -17,7 +17,6 @@ package clustergroup
 import (
 	"context"
 	"fmt"
-	"strconv"
 
 	"github.com/goph/emperror"
 	"github.com/pkg/errors"
@@ -52,7 +51,7 @@ func NewManager(
 	}
 }
 
-func (g *Manager) CreateClusterGroup(ctx context.Context, name string, orgID uint, members []string) (*uint, error) {
+func (g *Manager) CreateClusterGroup(ctx context.Context, name string, orgID uint, members []uint) (*uint, error) {
 	cgModel, err := g.cgRepo.FindOne(ClusterGroupModel{
 		OrganizationID: orgID,
 		Name:           name,
@@ -69,41 +68,33 @@ func (g *Manager) CreateClusterGroup(ctx context.Context, name string, orgID uin
 	}
 
 	memberClusterModels := make([]MemberClusterModel, 0)
-	for _, clusterName := range members {
+	for _, clusterID := range members {
 		var cluster api.Cluster
-		err = nil
-		if clusterID, err := strconv.ParseUint(clusterName, 10, 64); err == nil {
-			cluster, err = g.clusterGetter.GetClusterByID(ctx, orgID, uint(clusterID))
-			if err == nil {
-				clusterName = cluster.GetName()
-			}
-		}
-		if cluster == nil {
-			cluster, err = g.clusterGetter.GetClusterByName(ctx, orgID, clusterName)
-		}
+		cluster, err := g.clusterGetter.GetClusterByID(ctx, orgID, clusterID)
 		if err != nil {
 			return nil, errors.WithStack(&memberClusterNotFoundError{
-				orgID:       orgID,
-				clusterName: clusterName,
+				orgID:     orgID,
+				clusterID: clusterID,
 			})
 		}
 		if ok, err := g.isClusterMemberOfAClusterGroup(cluster.GetID(), 0); ok {
 			return nil, errors.WithStack(&memberClusterPartOfAClusterGroupError{
-				orgID:       orgID,
-				clusterName: clusterName,
+				orgID:     orgID,
+				clusterID: clusterID,
 			})
 		} else if err != nil {
 			return nil, errors.WithStack(err)
 		}
 		clusterIsReady, err := cluster.IsReady()
 		if err == nil && clusterIsReady {
-			g.logger.Infof(clusterName)
 			memberClusterModels = append(memberClusterModels, MemberClusterModel{
 				ClusterID: cluster.GetID(),
 			})
-			g.logger.Infof("Join cluster %s to group: %s", clusterName, name)
+			g.logger.WithFields(logrus.Fields{
+				"clusterName":      cluster.GetName(),
+				"clusterGroupName": name,
+			}).Info("Join cluster to group")
 		}
-
 	}
 	if len(memberClusterModels) == 0 {
 		return nil, errors.WithStack(&noReadyMembersError{
@@ -130,7 +121,7 @@ func (g *Manager) CreateClusterGroup(ctx context.Context, name string, orgID uin
 
 }
 
-func (g *Manager) UpdateClusterGroup(ctx context.Context, orgID uint, clusterGroupId uint, name string, members []string) error {
+func (g *Manager) UpdateClusterGroup(ctx context.Context, orgID uint, clusterGroupId uint, name string, members []uint) error {
 	cgModel, err := g.cgRepo.FindOne(ClusterGroupModel{
 		ID: clusterGroupId,
 	})
@@ -141,38 +132,36 @@ func (g *Manager) UpdateClusterGroup(ctx context.Context, orgID uint, clusterGro
 	existingClusterGroup := g.GetClusterGroupFromModel(ctx, cgModel, false)
 	newMembers := make(map[uint]api.Cluster, 0)
 
-	for _, clusterName := range members {
+	for _, clusterID := range members {
 		var cluster api.Cluster
-		err = nil
-		if clusterID, err := strconv.ParseUint(clusterName, 10, 64); err == nil {
-			cluster, err = g.clusterGetter.GetClusterByID(ctx, orgID, uint(clusterID))
-			if err == nil {
-				clusterName = cluster.GetName()
-			}
-		}
-		if cluster == nil {
-			cluster, err = g.clusterGetter.GetClusterByName(ctx, orgID, clusterName)
-		}
+		cluster, err = g.clusterGetter.GetClusterByID(ctx, orgID, clusterID)
 		if err != nil {
 			return errors.WithStack(&memberClusterNotFoundError{
-				orgID:       orgID,
-				clusterName: clusterName,
+				orgID:     orgID,
+				clusterID: clusterID,
 			})
 		}
 		if ok, err := g.isClusterMemberOfAClusterGroup(cluster.GetID(), existingClusterGroup.Id); ok {
 			return errors.WithStack(&memberClusterPartOfAClusterGroupError{
-				orgID:       orgID,
-				clusterName: clusterName,
+				orgID:     orgID,
+				clusterID: clusterID,
 			})
 		} else if err != nil {
 			return errors.WithStack(err)
 		}
 		clusterIsReady, err := cluster.IsReady()
+		if err != nil {
+			return emperror.WrapWith(err, "could not check cluster readiness", "clusterID", cluster.GetID())
+		}
+		if !clusterIsReady {
+			return emperror.WrapWith(errors.New("cluster is not ready"), "could not join cluster to group", "clusterID", cluster.GetID(), "clusterGroupName", existingClusterGroup.Name, "clusterName", cluster.GetName())
+		}
 		if err == nil && clusterIsReady {
-			g.logger.Infof("Join cluster %s to group: %s", clusterName, existingClusterGroup.Name)
+			g.logger.WithFields(logrus.Fields{
+				"clusterName":      cluster.GetName(),
+				"clusterGroupName": existingClusterGroup.Name,
+			}).Info("Join cluster to group")
 			newMembers[cluster.GetID()] = cluster
-		} else {
-			g.logger.Infof("Can't join cluster %s to group: %s as it not ready!", clusterName, existingClusterGroup.Name)
 		}
 	}
 

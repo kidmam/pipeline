@@ -20,8 +20,8 @@ import (
 
 // CreateRequest describes fields of a create cluster group request
 type CreateRequest struct {
-	Name    string   `json:"name" yaml:"name"`
-	Members []string `json:"members,omitempty" yaml:"members"`
+	Name    string `json:"name" yaml:"name"`
+	Members []uint `json:"members" yaml:"members"`
 }
 
 // Validate validates CreateRequest
@@ -44,8 +44,8 @@ type CreateResponse struct {
 
 // UpdateRequest describes fields of a update cluster group request
 type UpdateRequest struct {
-	Name    string   `json:"name" yaml:"name"`
-	Members []string `json:"members,omitempty" yaml:"members"`
+	Name    string `json:"name" yaml:"name"`
+	Members []uint `json:"members,omitempty" yaml:"members"`
 }
 
 // Validate validates UpdateRequest

@@ -83,8 +83,8 @@ func IsClusterGroupAlreadyExistsError(err error) bool {
 }
 
 type memberClusterNotFoundError struct {
-	orgID       uint
-	clusterName string
+	orgID     uint
+	clusterID uint
 }
 
 func (e *memberClusterNotFoundError) Error() string {
@@ -92,12 +92,12 @@ func (e *memberClusterNotFoundError) Error() string {
 }
 
 func (e *memberClusterNotFoundError) Message() string {
-	return fmt.Sprintf("%s: %s", e.Error(), e.clusterName)
+	return fmt.Sprintf("%s: %d", e.Error(), e.clusterID)
 }
 
 func (e *memberClusterNotFoundError) Context() []interface{} {
 	return []interface{}{
-		"clusterGroupName", e.clusterName,
+		"clusterID", e.clusterID,
 		"organizationID", e.orgID,
 	}
 }
@@ -167,8 +167,8 @@ func IsNoReadyMembersError(err error) bool {
 }
 
 type memberClusterPartOfAClusterGroupError struct {
-	orgID       uint
-	clusterName string
+	orgID     uint
+	clusterID uint
 }
 
 func (e *memberClusterPartOfAClusterGroupError) Error() string {
@@ -176,12 +176,12 @@ func (e *memberClusterPartOfAClusterGroupError) Error() string {
 }
 
 func (e *memberClusterPartOfAClusterGroupError) Message() string {
-	return fmt.Sprintf("%s: %s", e.Error(), e.clusterName)
+	return fmt.Sprintf("%s: %d", e.Error(), e.clusterID)
 }
 
 func (e *memberClusterPartOfAClusterGroupError) Context() []interface{} {
 	return []interface{}{
-		"clusterGroupName", e.clusterName,
+		"clusterID", e.clusterID,
 		"organizationID", e.orgID,
 	}
 }
