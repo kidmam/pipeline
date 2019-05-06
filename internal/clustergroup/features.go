@@ -169,6 +169,11 @@ func (g *Manager) GetFeature(clusterGroup api.ClusterGroup, featureName string) 
 
 // DisableFeature disable a cluster group feature
 func (g *Manager) DisableFeature(featureName string, clusterGroup *api.ClusterGroup) error {
+	_, err := g.GetFeatureHandler(featureName)
+	if err != nil {
+		return err
+	}
+
 	result, err := g.cgRepo.GetFeature(clusterGroup.Id, featureName)
 	if err != nil {
 		return emperror.With(err,
@@ -188,6 +193,16 @@ func (g *Manager) DisableFeature(featureName string, clusterGroup *api.ClusterGr
 
 // SetFeatureParams sets params of a cluster group feature
 func (g *Manager) SetFeatureParams(featureName string, clusterGroup *api.ClusterGroup, properties interface{}) error {
+	handler, err := g.GetFeatureHandler(featureName)
+	if err != nil {
+		return err
+	}
+
+	err = handler.ValidateProperties(properties)
+	if err != nil {
+		return emperror.Wrap(err, "invalid properties")
+	}
+
 	result, err := g.cgRepo.GetFeature(clusterGroup.Id, featureName)
 	if IsRecordNotFoundError(err) {
 		result = &ClusterGroupFeatureModel{
@@ -199,16 +214,6 @@ func (g *Manager) SetFeatureParams(featureName string, clusterGroup *api.Cluster
 			"clusterGroupId", clusterGroup.Id,
 			"featureName", featureName,
 		)
-	}
-
-	handler, err := g.GetFeatureHandler(featureName)
-	if err != nil {
-		return err
-	}
-
-	err = handler.ValidateProperties(properties)
-	if err != nil {
-		return emperror.Wrap(err, "invalid properties")
 	}
 
 	result.Enabled = true
