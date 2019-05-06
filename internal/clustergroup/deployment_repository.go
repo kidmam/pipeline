@@ -58,9 +58,9 @@ func (g *CGDeploymentRepository) FindByName(clusterGroupID uint, deploymentName 
 func (g *CGDeploymentRepository) FindAll(clusterGroupID uint) ([]*ClusterGroupDeploymentModel, error) {
 	var deployments []*ClusterGroupDeploymentModel
 
-	err := g.db.Preload("ValueOverrides").Find(&deployments).Where(&ClusterGroupDeploymentModel{
+	err := g.db.Preload("ValueOverrides").Where(&ClusterGroupDeploymentModel{
 		ClusterGroupID: clusterGroupID,
-	}).Error
+	}).Find(&deployments).Error
 
 	if err != nil && !gorm.IsRecordNotFoundError(err) {
 		return nil, emperror.With(errors.Wrap(err, "could not fetch cluster group deployments"),
