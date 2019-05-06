@@ -18,11 +18,12 @@ import (
 	"context"
 	"net/http"
 
+	"github.com/gin-gonic/gin"
+
 	"github.com/banzaicloud/pipeline/auth"
-	"github.com/banzaicloud/pipeline/internal/platform/gin/utils"
+	ginutils "github.com/banzaicloud/pipeline/internal/platform/gin/utils"
 	"github.com/banzaicloud/pipeline/pkg/clustergroup"
 	pkgCommon "github.com/banzaicloud/pipeline/pkg/common"
-	"github.com/gin-gonic/gin"
 )
 
 func (n *API) Upgrade(c *gin.Context) {
@@ -35,7 +36,7 @@ func (n *API) Upgrade(c *gin.Context) {
 		return
 	}
 
-	clusterGroup, err := n.clusterGroupManager.GetClusterGroupById(ctx, clusterGroupId)
+	clusterGroup, err := n.clusterGroupManager.GetClusterGroupByID(ctx, clusterGroupId)
 	if err != nil {
 		n.errorHandler.Handle(c, err)
 		return

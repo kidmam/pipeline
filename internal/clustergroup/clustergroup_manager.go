@@ -16,7 +16,6 @@ package clustergroup
 
 import (
 	"context"
-	"fmt"
 
 	"github.com/goph/emperror"
 	"github.com/pkg/errors"
@@ -212,8 +211,8 @@ func (g *Manager) GetClusterGroupFromModel(ctx context.Context, cg *ClusterGroup
 	clusterGroup.Id = cg.ID
 	clusterGroup.UID = cg.UID
 	clusterGroup.OrganizationID = cg.OrganizationID
-	clusterGroup.Members = make([]api.MemberCluster, 0)
-	clusterGroup.MemberClusters = make(map[uint]api.Cluster, 0)
+	clusterGroup.Members = make([]api.Member, 0)
+	clusterGroup.Clusters = make(map[uint]api.Cluster, 0)
 
 	enabledFeatures := make([]string, 0)
 	for _, feature := range cg.FeatureParams {
@@ -226,13 +225,13 @@ func (g *Manager) GetClusterGroupFromModel(ctx context.Context, cg *ClusterGroup
 	for _, m := range cg.Members {
 		cluster, err := g.clusterGetter.GetClusterByIDOnly(ctx, m.ClusterID)
 		if err != nil {
-			clusterGroup.Members = append(clusterGroup.Members, api.MemberCluster{
-				Name:   fmt.Sprintf("clusterID: %v", m.ClusterID),
+			clusterGroup.Members = append(clusterGroup.Members, api.Member{
+				ID:     m.ClusterID,
 				Status: "cluster not found",
 			})
 			continue
 		}
-		memberCluster := api.MemberCluster{
+		member := api.Member{
 			ID:           cluster.GetID(),
 			Cloud:        cluster.GetCloud(),
 			Distribution: cluster.GetDistribution(),
@@ -241,14 +240,13 @@ func (g *Manager) GetClusterGroupFromModel(ctx context.Context, cg *ClusterGroup
 		if withStatus {
 			clusterStatus, err := cluster.GetStatus()
 			if err != nil {
-				memberCluster.Status = err.Error()
+				member.Status = err.Error()
 			} else {
-				memberCluster.Status = clusterStatus.Status
+				member.Status = clusterStatus.Status
 			}
 		}
-
-		clusterGroup.Members = append(clusterGroup.Members, memberCluster)
-		clusterGroup.MemberClusters[cluster.GetID()] = cluster
+		clusterGroup.Members = append(clusterGroup.Members, member)
+		clusterGroup.Clusters[cluster.GetID()] = cluster
 	}
 
 	return &clusterGroup
@@ -303,7 +301,7 @@ func (g *Manager) isClusterMemberOfAClusterGroup(clusterID uint, clusterGroupId 
 	return true, nil
 }
 
-func (g *Manager) validateBeforeClusterGroupUpdate(clusterGroup api.ClusterGroup, newMembers map[uint]api.Cluster) error {
+func (g *Manager) validateBeforeClusterGroupUpdate(clusterGroup api.ClusterGroup, newClusters map[uint]api.Cluster) error {
 	g.logger.WithField("clusterGroupName", clusterGroup.Name).Debug("validate group members before update")
 
 	features, err := g.GetFeatures(clusterGroup)
@@ -311,15 +309,15 @@ func (g *Manager) validateBeforeClusterGroupUpdate(clusterGroup api.ClusterGroup
 		return err
 	}
 
-	memberClusters := make([]api.MemberCluster, 0)
-	for _, cluster := range newMembers {
-		memberCluster := api.MemberCluster{
+	members := make([]api.Member, 0)
+	for _, cluster := range newClusters {
+		member := api.Member{
 			ID:           cluster.GetID(),
 			Cloud:        cluster.GetCloud(),
 			Distribution: cluster.GetDistribution(),
 			Name:         cluster.GetName(),
 		}
-		memberClusters = append(memberClusters, memberCluster)
+		members = append(members, member)
 	}
 
 	for name, feature := range features {
@@ -327,8 +325,8 @@ func (g *Manager) validateBeforeClusterGroupUpdate(clusterGroup api.ClusterGroup
 			continue
 		}
 
-		clusterGroup.MemberClusters = newMembers
-		clusterGroup.Members = memberClusters
+		clusterGroup.Clusters = newClusters
+		clusterGroup.Members = members
 		feature.ClusterGroup = clusterGroup
 
 		handler, err := g.GetFeatureHandler(name)

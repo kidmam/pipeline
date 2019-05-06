@@ -66,8 +66,8 @@ type UpdateResponse struct {
 	ResourceID uint   `json:"id"`
 }
 
-// MemberClusterStatus
-type MemberCluster struct {
+// Member
+type Member struct {
 	ID           uint   `json:"id" yaml:"id"`
 	Cloud        string `json:"cloud" yaml:"cloud"`
 	Distribution string `json:"distribution" yaml:"distribution"`
@@ -81,9 +81,9 @@ type ClusterGroup struct {
 	UID             string           `json:"uid" yaml:"uid"`
 	Name            string           `json:"name" yaml:"name"`
 	OrganizationID  uint             `json:"organizationId" yaml:"organizationId"`
-	Members         []MemberCluster  `json:"members,omitempty" yaml:"members"`
-	EnabledFeatures []string         `json:"enabledFeatures,omitempty"`
-	MemberClusters  map[uint]Cluster `json:"-" yaml:"-"`
+	Members         []Member         `json:"members,omitempty" yaml:"members"`
+	EnabledFeatures []string         `json:"enabledFeatures,omitempty" yaml:"enabledFeatures"`
+	Clusters        map[uint]Cluster `json:"-" yaml:"-"`
 }
 
 func (g *ClusterGroup) IsMember(clusterName string) bool {

@@ -83,7 +83,7 @@ func (m *CGDeploymentManager) ValidateProperties(properties interface{}) error {
 
 func (m *CGDeploymentManager) GetMembersStatus(featureState api.Feature) (map[string]string, error) {
 	statusMap := make(map[string]string, 0)
-	for _, memberCluster := range featureState.ClusterGroup.MemberClusters {
+	for _, memberCluster := range featureState.ClusterGroup.Clusters {
 		statusMap[memberCluster.GetName()] = "ready"
 	}
 	return statusMap, nil
@@ -222,7 +222,7 @@ func (m CGDeploymentManager) createDeploymentModel(clusterGroup *api.ClusterGrou
 	}
 	deploymentModel.Values = values
 	deploymentModel.ValueOverrides = make([]DeploymentValueOverrides, 0)
-	for _, cluster := range clusterGroup.MemberClusters {
+	for _, cluster := range clusterGroup.Clusters {
 		valueOverrideModel := DeploymentValueOverrides{
 			ClusterID:   cluster.GetID(),
 			ClusterName: cluster.GetName(),
@@ -255,12 +255,12 @@ func (m CGDeploymentManager) updateDeploymentModel(clusterGroup *api.ClusterGrou
 	}
 	deploymentModel.Values = values
 	deploymentModel.ValueOverrides = make([]DeploymentValueOverrides, 0)
-	for clusterName, cluster := range clusterGroup.MemberClusters {
+	for _, cluster := range clusterGroup.Clusters {
 		valueOverrideModel := DeploymentValueOverrides{
 			ClusterID:   cluster.GetID(),
-			ClusterName: clusterName,
+			ClusterName: cluster.GetName(),
 		}
-		if valuesOverride, ok := cgDeployment.ValueOverrides[clusterName]; ok {
+		if valuesOverride, ok := cgDeployment.ValueOverrides[cluster.GetName()]; ok {
 			marshalledValues, err := json.Marshal(valuesOverride)
 			if err != nil {
 				return err
@@ -308,7 +308,7 @@ func (m CGDeploymentManager) CreateDeployment(clusterGroup *api.ClusterGroup, or
 	statusChan := make(chan clustergroup.DeploymentStatus)
 	defer close(statusChan)
 
-	for _, commonCluster := range clusterGroup.MemberClusters {
+	for _, commonCluster := range clusterGroup.Clusters {
 		deploymentCount++
 		go func(commonCluster api.Cluster, cgDeployment *clustergroup.ClusterGroupDeployment) {
 			clerr := m.installDeploymentOnCluster(commonCluster, orgName, env, cgDeployment, requestedChart)
@@ -386,7 +386,7 @@ func (m CGDeploymentManager) GetDeployment(clusterGroup *api.ClusterGroup, deplo
 	statusChan := make(chan clustergroup.DeploymentStatus)
 	defer close(statusChan)
 
-	for _, commonCluster := range clusterGroup.MemberClusters {
+	for _, commonCluster := range clusterGroup.Clusters {
 		deploymentCount++
 		go func(commonCluster api.Cluster, name string) {
 			status, clErr := m.getClusterDeploymentStatus(commonCluster, name)
@@ -507,7 +507,7 @@ func (m CGDeploymentManager) DeleteDeployment(clusterGroup *api.ClusterGroup, de
 				ClusterName: commonCluster.GetName(),
 				Status:      status,
 			}
-		}(clusterOverride.ClusterID, clusterGroup.MemberClusters[clusterOverride.ClusterID], deploymentName)
+		}(clusterOverride.ClusterID, clusterGroup.Clusters[clusterOverride.ClusterID], deploymentName)
 	}
 
 	// wait for goroutines to finish
@@ -566,7 +566,7 @@ func (m CGDeploymentManager) UpdateDeployment(clusterGroup *api.ClusterGroup, or
 	defer close(statusChan)
 
 	// upgrade & install deployments
-	for _, commonCluster := range clusterGroup.MemberClusters {
+	for _, commonCluster := range clusterGroup.Clusters {
 		deploymentCount++
 		go func(commonCluster api.Cluster, cgDeployment *clustergroup.ClusterGroupDeployment) {
 			//TODO install or upgrade

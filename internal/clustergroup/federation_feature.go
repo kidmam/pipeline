@@ -60,7 +60,7 @@ func (f *FederationHandler) ValidateProperties(properties interface{}) error {
 
 func (f *FederationHandler) GetMembersStatus(featureState api.Feature) (map[string]string, error) {
 	statusMap := make(map[string]string, 0)
-	for _, memberCluster := range featureState.ClusterGroup.MemberClusters {
+	for _, memberCluster := range featureState.ClusterGroup.Clusters {
 		statusMap[memberCluster.GetName()] = "ready"
 	}
 	return statusMap, nil
