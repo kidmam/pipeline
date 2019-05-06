@@ -86,7 +86,7 @@ func (g *Manager) ReconcileFeatures(clusterGroup api.ClusterGroup, onlyEnabledHa
 }
 
 func (g *Manager) DisableFeatures(clusterGroup api.ClusterGroup) error {
-	g.logger.Debugf("disable features for group: %s", clusterGroup.Name)
+	g.logger.WithField("clusterGroupName", clusterGroup.Name).Debug("disable all enabled features")
 
 	features, err := g.GetFeatures(clusterGroup)
 	if err != nil {
@@ -95,10 +95,9 @@ func (g *Manager) DisableFeatures(clusterGroup api.ClusterGroup) error {
 
 	for name, feature := range features {
 		if feature.Enabled {
-			handler := g.featureHandlerMap[name]
-			if handler == nil {
-				g.logger.Debugf("no handler registered for cluster group feature %s", name)
-				continue
+			handler, err := g.GetFeatureHandler(name)
+			if err != nil {
+				return err
 			}
 			feature.Enabled = false
 			handler.ReconcileState(feature)
