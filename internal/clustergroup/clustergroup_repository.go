@@ -66,7 +66,7 @@ func (g *ClusterGroupRepository) FindOne(cg ClusterGroupModel) (*ClusterGroupMod
 func (g *ClusterGroupRepository) FindAll() ([]*ClusterGroupModel, error) {
 	var cgroups []*ClusterGroupModel
 
-	err := g.db.Preload("Members").Find(&cgroups).Error
+	err := g.db.Preload("Members").Preload("FeatureParams").Find(&cgroups).Error
 	if err != nil {
 		return nil, errors.Wrap(err, "could not fetch cluster groups")
 	}
