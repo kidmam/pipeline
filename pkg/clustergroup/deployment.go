@@ -43,9 +43,11 @@ type CreateUpdateDeploymentResponse struct {
 
 // DeploymentStatus describes a status of a deployment on a target cluster
 type DeploymentStatus struct {
-	ClusterId   uint   `json:"clusterId"`
-	ClusterName string `json:"clusterName"`
-	Status      string `json:"status"`
+	ClusterId    uint   `json:"clusterId"`
+	ClusterName  string `json:"clusterName"`
+	Cloud        string `json:"cloud"`
+	Distribution string `json:"distribution"`
+	Status       string `json:"status"`
 }
 
 // GetDeploymentResponse describes the details of a helm deployment

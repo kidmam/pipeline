@@ -312,9 +312,11 @@ func (m CGDeploymentManager) GetDeployment(clusterGroup *api.ClusterGroup, deplo
 				status = fmt.Sprintf("Failed to get status: %s", clErr.Error())
 			}
 			statusChan <- clustergroup.DeploymentStatus{
-				ClusterId:   commonCluster.GetID(),
-				ClusterName: commonCluster.GetName(),
-				Status:      status,
+				ClusterId:    commonCluster.GetID(),
+				ClusterName:  commonCluster.GetName(),
+				Status:       status,
+				Cloud:        commonCluster.GetCloud(),
+				Distribution: commonCluster.GetDistribution(),
 			}
 		}(commonCluster, deploymentName)
 	}
