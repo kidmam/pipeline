@@ -23,7 +23,7 @@ require (
 	github.com/banzaicloud/bank-vaults v0.0.0-20190408133613-dc8e83242b1b
 	github.com/banzaicloud/cicd-go v0.0.0-20190214150755-832df3e92677
 	github.com/banzaicloud/go-gin-prometheus v0.0.0-20181204122313-8145dbf52419
-	github.com/banzaicloud/istio-operator v0.0.0-20190312122926-a4debb5bafe9
+	github.com/banzaicloud/istio-operator v0.0.0-20190430142744-7f4bf475ff8f
 	github.com/banzaicloud/logrus-runtime-formatter v0.0.0-20180617171254-12df4a18567f
 	github.com/banzaicloud/nodepool-labels-operator v0.0.0-20190219103855-a13c1b05f240
 	github.com/banzaicloud/prometheus-config v0.0.0-20181214142820-fc6ae4756a29
