@@ -47,6 +47,8 @@ type CGDeploymentManager struct {
 const SUCCEEDED_STATUS = "deployed"
 const FAILED_STATUS = "failed"
 const DELETED_STATUS = "deleted"
+const NOT_INSTALLED_STATUS = "not installed"
+const STALE_STATUS = "stale"
 const releaseNameMaxLen = 53
 
 // NewCGDeploymentManager returns a new CGDeploymentManager instance.
@@ -182,24 +184,24 @@ func (m CGDeploymentManager) upgradeDeploymentOnCluster(commonCluster api.Cluste
 	return nil
 }
 
-func (m CGDeploymentManager) getClusterDeploymentStatus(commonCluster api.Cluster, name string) (string, error) {
+func (m CGDeploymentManager) getClusterDeploymentStatus(commonCluster api.Cluster, name string) (string, string, error) {
 	m.logger.Infof("Installing deployment on %s", commonCluster.GetName())
 	k8sConfig, err := commonCluster.GetK8sConfig()
 	if err != nil {
-		return "", err
+		return "", "", err
 	}
 
 	deployments, err := helm.ListDeployments(&name, "", k8sConfig)
 	if err != nil {
 		m.logger.Errorf("ListDeployments for '%s' failed due to: %s", name, err.Error())
-		return "", err
+		return "", "", err
 	}
 	for _, release := range deployments.GetReleases() {
 		if release.Name == name {
-			return release.Info.Status.Code.String(), nil
+			return release.Info.Status.Code.String(), release.Chart.Metadata.Version, nil
 		}
 	}
-	return "unknown", nil
+	return NOT_INSTALLED_STATUS, "", nil
 }
 
 func (m CGDeploymentManager) createDeploymentModel(clusterGroup *api.ClusterGroup, orgName string, cgDeployment *clustergroup.ClusterGroupDeployment, requestedChart *chart.Chart) (*ClusterGroupDeploymentModel, error) {
@@ -389,7 +391,7 @@ func (m CGDeploymentManager) GetDeployment(clusterGroup *api.ClusterGroup, deplo
 	for _, commonCluster := range clusterGroup.Clusters {
 		deploymentCount++
 		go func(commonCluster api.Cluster, name string) {
-			status, clErr := m.getClusterDeploymentStatus(commonCluster, name)
+			status, version, clErr := m.getClusterDeploymentStatus(commonCluster, name)
 			if clErr != nil {
 				status = fmt.Sprintf("Failed to get status: %s", clErr.Error())
 			}
@@ -397,6 +399,7 @@ func (m CGDeploymentManager) GetDeployment(clusterGroup *api.ClusterGroup, deplo
 				ClusterId:    commonCluster.GetID(),
 				ClusterName:  commonCluster.GetName(),
 				Status:       status,
+				Version:      version,
 				Cloud:        commonCluster.GetCloud(),
 				Distribution: commonCluster.GetDistribution(),
 			}
@@ -408,9 +411,38 @@ func (m CGDeploymentManager) GetDeployment(clusterGroup *api.ClusterGroup, deplo
 		status := <-statusChan
 		targetClusterStatus = append(targetClusterStatus, status)
 	}
-	deployment.TargetClusters = targetClusterStatus
 
+	targetClusterStatus = append(targetClusterStatus, m.addStaleClusterStatuses(clusterGroup.Clusters, deploymentModel.ValueOverrides)...)
+
+	deployment.TargetClusters = targetClusterStatus
 	return deployment, nil
+}
+
+// returns stale clusters, cluster not members of the cluster group anymore. they may have been already deleted
+func (m CGDeploymentManager) addStaleClusterStatuses(clusters map[uint]api.Cluster, overrides []DeploymentValueOverrides) []clustergroup.DeploymentStatus {
+	staleClusterStatuses := make([]clustergroup.DeploymentStatus, 0)
+	for _, o := range overrides {
+		if _, exists := clusters[o.ClusterID]; !exists {
+
+			ctx := context.Background()
+			cluster, err := m.clusterGetter.GetClusterByIDOnly(ctx, o.ClusterID)
+			status := STALE_STATUS
+			if err != nil {
+				status += ", cluster not found"
+			}
+			deploymentStatus := clustergroup.DeploymentStatus{
+				ClusterId:   o.ClusterID,
+				ClusterName: o.ClusterName,
+				Status:      status,
+			}
+			staleClusterStatuses = append(staleClusterStatuses, deploymentStatus)
+			if cluster != nil {
+				deploymentStatus.Cloud = cluster.GetCloud()
+				deploymentStatus.Distribution = cluster.GetDistribution()
+			}
+		}
+	}
+	return staleClusterStatuses
 }
 
 func (m CGDeploymentManager) GenerateReleaseName(clusterGroup *api.ClusterGroup) string {
@@ -545,7 +577,7 @@ func (m CGDeploymentManager) UpdateDeployment(clusterGroup *api.ClusterGroup, or
 	}
 
 	// get deployment
-	deploymentModel, err := m.repository.FindByName(clusterGroup.Id, cgDeployment.Name)
+	deploymentModel, err := m.repository.FindByName(clusterGroup.Id, cgDeployment.ReleaseName)
 	if err != nil {
 		return nil, err
 	}

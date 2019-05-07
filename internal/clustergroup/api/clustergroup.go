@@ -69,8 +69,8 @@ type UpdateResponse struct {
 // Member
 type Member struct {
 	ID           uint   `json:"id" yaml:"id"`
-	Cloud        string `json:"cloud" yaml:"cloud"`
-	Distribution string `json:"distribution" yaml:"distribution"`
+	Cloud        string `json:"cloud,omitempty" yaml:"cloud"`
+	Distribution string `json:"distribution,omitempty" yaml:"distribution"`
 	Name         string `json:"name" yaml:"name"`
 	Status       string `json:"status,omitempty" yaml:"status,omitempty"`
 }
