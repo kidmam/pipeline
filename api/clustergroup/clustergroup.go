@@ -15,12 +15,14 @@
 package clustergroup
 
 import (
+	"github.com/banzaicloud/pipeline/api/clustergroup/deployment"
+	pkgDep "github.com/banzaicloud/pipeline/internal/clustergroup/deployment"
 	"github.com/gin-gonic/gin"
 	"github.com/goph/emperror"
 	"github.com/sirupsen/logrus"
 
 	"github.com/banzaicloud/pipeline/api/clustergroup/common"
-	"github.com/banzaicloud/pipeline/api/clustergroup/deployment"
+
 	"github.com/banzaicloud/pipeline/api/clustergroup/feature"
 	cgroup "github.com/banzaicloud/pipeline/internal/clustergroup"
 )
@@ -32,14 +34,14 @@ const (
 // API implements the Cluster Group Management API actions.
 type API struct {
 	clusterGroupManager *cgroup.Manager
-	deploymentManager   *cgroup.CGDeploymentManager
+	deploymentManager   *pkgDep.CGDeploymentManager
 	logger              logrus.FieldLogger
 	errorHandler        common.ErrorHandler
 }
 
 func NewAPI(
 	clusterGroupManager *cgroup.Manager,
-	deploymentManager *cgroup.CGDeploymentManager,
+	deploymentManager *pkgDep.CGDeploymentManager,
 	logger logrus.FieldLogger,
 	baseErrorHandler emperror.Handler,
 ) *API {

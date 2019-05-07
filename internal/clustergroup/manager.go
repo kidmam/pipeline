@@ -17,6 +17,7 @@ package clustergroup
 import (
 	"context"
 
+	"github.com/banzaicloud/pipeline/internal/clustergroup/deployment"
 	"github.com/goph/emperror"
 	"github.com/pkg/errors"
 	"github.com/sirupsen/logrus"
@@ -110,7 +111,7 @@ func (g *Manager) CreateClusterGroup(ctx context.Context, name string, orgID uin
 	// enable DeploymentFeature by default on every cluster group
 	deploymentFeature := &ClusterGroupFeatureModel{
 		Enabled:        true,
-		Name:           DeploymentFeatureName,
+		Name:           deployment.FeatureName,
 		ClusterGroupID: *cgId,
 	}
 	err = g.cgRepo.SaveFeature(deploymentFeature)

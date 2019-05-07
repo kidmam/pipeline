@@ -21,8 +21,8 @@ import (
 	"github.com/gin-gonic/gin"
 
 	"github.com/banzaicloud/pipeline/auth"
+	pkgDep "github.com/banzaicloud/pipeline/internal/clustergroup/deployment"
 	ginutils "github.com/banzaicloud/pipeline/internal/platform/gin/utils"
-	"github.com/banzaicloud/pipeline/pkg/clustergroup"
 	pkgCommon "github.com/banzaicloud/pipeline/pkg/common"
 )
 
@@ -51,7 +51,7 @@ func (n *API) Upgrade(c *gin.Context) {
 		})
 		return
 	}
-	var deployment *clustergroup.ClusterGroupDeployment
+	var deployment *pkgDep.ClusterGroupDeployment
 	if err := c.ShouldBindJSON(&deployment); err != nil {
 		n.errorHandler.Handle(c, c.Error(err).SetType(gin.ErrorTypeBind))
 		return
@@ -65,8 +65,7 @@ func (n *API) Upgrade(c *gin.Context) {
 		return
 	}
 
-	n.logger.Debug("Release name: ", deployment.ReleaseName)
-	response := clustergroup.CreateUpdateDeploymentResponse{
+	response := pkgDep.CreateUpdateDeploymentResponse{
 		ReleaseName:    deployment.ReleaseName,
 		TargetClusters: targetClusterStatus,
 	}

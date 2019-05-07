@@ -23,6 +23,8 @@ import (
 	"strings"
 	"time"
 
+	"github.com/banzaicloud/pipeline/internal/clustergroup/deployment"
+	"github.com/banzaicloud/pipeline/internal/federation"
 	"github.com/jinzhu/gorm"
 
 	"github.com/banzaicloud/pipeline/internal/clustergroup"
@@ -266,10 +268,10 @@ func main() {
 
 	cgroupAdapter := cgroupAdapter.NewClusterGetter(clusterManager)
 	clusterGroupManager := clustergroup.NewManager(cgroupAdapter, clustergroup.NewClusterGroupRepository(db, log), log, errorHandler)
-	federationHandler := clustergroup.NewFederationHandler(log, errorHandler)
-	deploymentManager := clustergroup.NewCGDeploymentManager(db, cgroupAdapter, log, errorHandler)
-	clusterGroupManager.RegisterFeatureHandler(clustergroup.FederationFeatureName, federationHandler)
-	clusterGroupManager.RegisterFeatureHandler(clustergroup.DeploymentFeatureName, deploymentManager)
+	federationHandler := federation.NewFederationHandler(log, errorHandler)
+	deploymentManager := deployment.NewCGDeploymentManager(db, cgroupAdapter, log, errorHandler)
+	clusterGroupManager.RegisterFeatureHandler(federation.FeatureName, federationHandler)
+	clusterGroupManager.RegisterFeatureHandler(deployment.FeatureName, deploymentManager)
 
 	nplsApi := api.NewNodepoolManagerAPI(clusterGetter, log, errorHandler)
 

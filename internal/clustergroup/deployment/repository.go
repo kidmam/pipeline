@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-package clustergroup
+package deployment
 
 import (
 	"github.com/goph/emperror"
@@ -36,7 +36,7 @@ func (g *CGDeploymentRepository) FindByName(clusterGroupID uint, deploymentName 
 	err := g.db.Where(ClusterGroupDeploymentModel{
 		ClusterGroupID:        clusterGroupID,
 		DeploymentReleaseName: deploymentName,
-	}).Preload("ValueOverrides").First(&result).Error
+	}).Preload("TargetClusters").First(&result).Error
 
 	if gorm.IsRecordNotFoundError(err) {
 		return nil, errors.WithStack(&deploymentNotFoundError{
@@ -58,7 +58,7 @@ func (g *CGDeploymentRepository) FindByName(clusterGroupID uint, deploymentName 
 func (g *CGDeploymentRepository) FindAll(clusterGroupID uint) ([]*ClusterGroupDeploymentModel, error) {
 	var deployments []*ClusterGroupDeploymentModel
 
-	err := g.db.Preload("ValueOverrides").Where(&ClusterGroupDeploymentModel{
+	err := g.db.Preload("TargetClusters").Where(&ClusterGroupDeploymentModel{
 		ClusterGroupID: clusterGroupID,
 	}).Find(&deployments).Error
 
@@ -75,18 +75,38 @@ func (g *CGDeploymentRepository) Save(model *ClusterGroupDeploymentModel) error 
 	return g.db.Save(model).Error
 }
 
-// Delete deletes a deployment
-func (g *CGDeploymentRepository) Delete(model *ClusterGroupDeploymentModel) error {
-	for _, v := range model.ValueOverrides {
-		err := g.db.Delete(v).Error
-		if err != nil {
-			return err
-		}
-	}
-
+// Delete deletes a target cluster from deployment
+func (g *CGDeploymentRepository) DeleteTargetCluster(model *TargetCluster) error {
 	err := g.db.Delete(model).Error
 	if err != nil {
 		return err
+	}
+	return nil
+}
+
+// Delete deletes a cluster group deployment if every target cluster is deleted successfully
+func (g *CGDeploymentRepository) Delete(model *ClusterGroupDeploymentModel, targetClustersStatus []TargetClusterStatus) error {
+	targetClusterStatusMap := make(map[uint]TargetClusterStatus, 0)
+	for _, cs := range targetClustersStatus {
+		targetClusterStatusMap[cs.ClusterId] = cs
+	}
+	deletedCount := 0
+
+	for _, v := range model.TargetClusters {
+		if status, ok := targetClusterStatusMap[v.ClusterID]; ok && status.Status == DeletedStatus {
+			err := g.db.Delete(v).Error
+			if err != nil {
+				return err
+			}
+			deletedCount++
+		}
+	}
+
+	if deletedCount == len(model.TargetClusters) {
+		err := g.db.Delete(model).Error
+		if err != nil {
+			return err
+		}
 	}
 
 	return nil

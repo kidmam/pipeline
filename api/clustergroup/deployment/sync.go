@@ -16,20 +16,22 @@ package deployment
 
 import (
 	"context"
+	pkgCommon "github.com/banzaicloud/pipeline/pkg/common"
 	"net/http"
 
-	pkgDep "github.com/banzaicloud/pipeline/internal/clustergroup/deployment"
+	"github.com/banzaicloud/pipeline/auth"
 	"github.com/gin-gonic/gin"
 
-	"github.com/banzaicloud/pipeline/auth"
 	ginutils "github.com/banzaicloud/pipeline/internal/platform/gin/utils"
-	pkgCommon "github.com/banzaicloud/pipeline/pkg/common"
 )
 
-func (n *API) Create(c *gin.Context) {
+func (n *API) Sync(c *gin.Context) {
+
 	ctx := ginutils.Context(context.Background(), c)
 
-	//orgId := auth.GetCurrentOrganization(c.Request).ID
+	name := c.Param("name")
+	n.logger.Infof("sync cluster group deployment: [%s]", name)
+
 	clusterGroupId, ok := ginutils.UintParam(c, "id")
 	if !ok {
 		return
@@ -50,29 +52,13 @@ func (n *API) Create(c *gin.Context) {
 		})
 		return
 	}
-	var deployment *pkgDep.ClusterGroupDeployment
-	if err := c.ShouldBindJSON(&deployment); err != nil {
-		n.errorHandler.Handle(c, c.Error(err).SetType(gin.ErrorTypeBind))
-		return
-	}
 
-	// TODO currently we don't check release name uniqueness, but upgrade any release found with the same name
-	// 	may be we can make this optional
-	if len(deployment.ReleaseName) == 0 {
-		deployment.ReleaseName = n.deploymentManager.GenerateReleaseName(clusterGroup)
-	}
-
-	targetClusterStatus, err := n.deploymentManager.CreateDeployment(clusterGroup, organization.Name, deployment)
+	response, err := n.deploymentManager.SyncDeployment(clusterGroup, organization.Name, name)
 	if err != nil {
 		n.errorHandler.Handle(c, err)
 		return
 	}
 
-	n.logger.Debug("Release name: ", deployment.ReleaseName)
-	response := pkgDep.CreateUpdateDeploymentResponse{
-		ReleaseName:    deployment.ReleaseName,
-		TargetClusters: targetClusterStatus,
-	}
-	c.JSON(http.StatusCreated, response)
+	c.JSON(http.StatusAccepted, response)
 	return
 }

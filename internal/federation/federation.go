@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-package clustergroup
+package federation
 
 import (
 	"github.com/goph/emperror"
@@ -21,44 +21,43 @@ import (
 	"github.com/banzaicloud/pipeline/internal/clustergroup/api"
 )
 
-type FederationHandler struct {
+type Handler struct {
 	logger       logrus.FieldLogger
 	errorHandler emperror.Handler
 }
 
-const FederationFeatureName = "federation"
-const DeploymentFeatureName = "deployment"
+const FeatureName = "federation"
 
-// NewFederationHandler returns a new FederationHandler instance.
+// NewFederationHandler returns a new Handler instance.
 func NewFederationHandler(
 	logger logrus.FieldLogger,
 	errorHandler emperror.Handler,
-) *FederationHandler {
-	return &FederationHandler{
-		logger:       logger.WithField("feature", FederationFeatureName),
+) *Handler {
+	return &Handler{
+		logger:       logger.WithField("feature", FeatureName),
 		errorHandler: errorHandler,
 	}
 }
 
-func (f *FederationHandler) ReconcileState(featureState api.Feature) error {
+func (f *Handler) ReconcileState(featureState api.Feature) error {
 	logger := f.logger.WithField("clusterGroupName", featureState.ClusterGroup.Name)
 	logger.Info("reconcile federation")
 
 	return nil
 }
 
-func (f *FederationHandler) ValidateState(featureState api.Feature) error {
+func (f *Handler) ValidateState(featureState api.Feature) error {
 	logger := f.logger.WithField("clusterGroupName", featureState.ClusterGroup.Name)
 	logger.Info("validate update state")
 
 	return nil
 }
 
-func (f *FederationHandler) ValidateProperties(properties interface{}) error {
+func (f *Handler) ValidateProperties(properties interface{}) error {
 	return nil
 }
 
-func (f *FederationHandler) GetMembersStatus(featureState api.Feature) (map[uint]string, error) {
+func (f *Handler) GetMembersStatus(featureState api.Feature) (map[uint]string, error) {
 	statusMap := make(map[uint]string, 0)
 	for _, memberCluster := range featureState.ClusterGroup.Clusters {
 		statusMap[memberCluster.GetID()] = "ready"

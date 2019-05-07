@@ -15,6 +15,7 @@
 package main
 
 import (
+	"github.com/banzaicloud/pipeline/internal/clustergroup/deployment"
 	"github.com/jinzhu/gorm"
 	"github.com/sirupsen/logrus"
 
@@ -62,6 +63,10 @@ func Migrate(db *gorm.DB, logger logrus.FieldLogger) error {
 	}
 
 	if err := clustergroup.Migrate(db, logger); err != nil {
+		return err
+	}
+
+	if err := deployment.Migrate(db, logger); err != nil {
 		return err
 	}
 

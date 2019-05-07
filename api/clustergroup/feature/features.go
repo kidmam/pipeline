@@ -15,6 +15,7 @@
 package feature
 
 import (
+	"github.com/banzaicloud/pipeline/internal/clustergroup/deployment"
 	"github.com/gin-gonic/gin"
 	"github.com/goph/emperror"
 	"github.com/sirupsen/logrus"
@@ -29,14 +30,14 @@ const (
 
 type API struct {
 	clusterGroupManager *cgroup.Manager
-	deploymentManager   *cgroup.CGDeploymentManager
+	deploymentManager   *deployment.CGDeploymentManager
 	logger              logrus.FieldLogger
 	errorHandler        common.ErrorHandler
 }
 
 func NewAPI(
 	clusterGroupManager *cgroup.Manager,
-	deploymentManager *cgroup.CGDeploymentManager,
+	deploymentManager *deployment.CGDeploymentManager,
 	logger logrus.FieldLogger,
 	baseErrorHandler emperror.Handler,
 ) *API {

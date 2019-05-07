@@ -35,7 +35,7 @@ type ChartConfig struct {
 	ValueOverrides []byte
 }
 
-// ValueOverrides describes values to be overridden in a deployment
+// TargetClusters describes values to be overridden in a deployment
 type ValueOverrides struct {
 	Configuration configuration `json:"configuration"`
 	Credentials   credentials   `json:"credentials"`

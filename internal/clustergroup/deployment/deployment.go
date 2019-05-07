@@ -12,59 +12,75 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-package clustergroup
+package deployment
 
 import (
 	"time"
+
+	"github.com/banzaicloud/pipeline/helm"
+	"github.com/ghodss/yaml"
 )
 
 // ClusterGroupDeployment describes a Helm deployment to a Cluster Group
 type ClusterGroupDeployment struct {
+	ReleaseName    string                            `json:"releaseName" yaml:"releaseName"`
 	Name           string                            `json:"name" yaml:"name" binding:"required"`
 	Version        string                            `json:"version,omitempty" yaml:"version,omitempty"`
 	Package        []byte                            `json:"package,omitempty" yaml:"package,omitempty"`
-	ReleaseName    string                            `json:"releaseName" yaml:"releaseName"`
 	ReUseValues    bool                              `json:"reuseValues" yaml:"reuseValues"`
 	Namespace      string                            `json:"namespace,omitempty" yaml:"namespace,omitempty"`
 	DryRun         bool                              `json:"dryrun,omitempty" yaml:"dryrun,omitempty"`
-	Wait           bool                              `json:"wait,omitempty" yaml:"wait,omitempty"`
-	Timeout        int64                             `json:"timeout,omitempty" yaml:"timeout,omitempty"`
 	Values         map[string]interface{}            `json:"values,omitempty" yaml:"values,omitempty"`
 	ValueOverrides map[string]map[string]interface{} `json:"valueOverrides,omitempty" yaml:"valueOverrides,omitempty"`
 	RollingMode    bool                              `json:"rollingMode,omitempty" yaml:"rollingMode,omitempty"`
 	Atomic         bool                              `json:"atomic,omitempty" yaml:"atomic,omitempty"`
 }
 
-// CreateUpdateDeploymentResponse describes a create/update deployment response
-type CreateUpdateDeploymentResponse struct {
-	ReleaseName    string             `json:"releaseName"`
-	TargetClusters []DeploymentStatus `json:"targetClusters"`
+// DeploymentInfo describes the details of a helm deployment
+type DeploymentInfo struct {
+	ReleaseName    string                            `json:"releaseName"`
+	Chart          string                            `json:"chart"`
+	ChartName      string                            `json:"chartName"`
+	ChartVersion   string                            `json:"chartVersion"`
+	Namespace      string                            `json:"namespace"`
+	Version        int32                             `json:"version,omitempty"`
+	Description    string                            `json:"description"`
+	CreatedAt      time.Time                         `json:"createdAt,omitempty"`
+	UpdatedAt      time.Time                         `json:"updatedAt,omitempty"`
+	Values         map[string]interface{}            `json:"values"`
+	ValueOverrides map[string]map[string]interface{} `json:"valueOverrides,omitempty" yaml:"valueOverrides,omitempty"`
+	TargetClusters []TargetClusterStatus             `json:"targetClusters"`
 }
 
-// DeploymentStatus describes a status of a deployment on a target cluster
-type DeploymentStatus struct {
+func (c *DeploymentInfo) GetValuesForCluster(clusterName string) ([]byte, error) {
+	values := c.Values
+	clusterSpecificOverrides, exists := c.ValueOverrides[clusterName]
+	// merge values with overrides for cluster if any
+	if exists {
+		values = helm.MergeValues(c.Values, clusterSpecificOverrides)
+	}
+	marshalledValues, err := yaml.Marshal(values)
+	if err != nil {
+		return nil, err
+	}
+	return marshalledValues, nil
+}
+
+// CreateUpdateDeploymentResponse describes a create/update deployment response
+type CreateUpdateDeploymentResponse struct {
+	ReleaseName    string                `json:"releaseName"`
+	TargetClusters []TargetClusterStatus `json:"targetClusters"`
+}
+
+// TargetClusterStatus describes a status of a deployment on a target cluster
+type TargetClusterStatus struct {
 	ClusterId    uint   `json:"clusterId"`
 	ClusterName  string `json:"clusterName"`
 	Cloud        string `json:"cloud,omitempty"`
 	Distribution string `json:"distribution,omitempty"`
 	Status       string `json:"status"`
+	Stale        bool   `json:"stale,omitempty"`
 	Version      string `json:"version,omitempty"`
-}
-
-// GetDeploymentResponse describes the details of a helm deployment
-type GetDeploymentResponse struct {
-	ReleaseName    string                 `json:"releaseName"`
-	Chart          string                 `json:"chart"`
-	ChartName      string                 `json:"chartName"`
-	ChartVersion   string                 `json:"chartVersion"`
-	Namespace      string                 `json:"namespace"`
-	Version        int32                  `json:"version,omitempty"`
-	Description    string                 `json:"description"`
-	CreatedAt      time.Time              `json:"createdAt,omitempty"`
-	UpdatedAt      time.Time              `json:"updatedAt,omitempty"`
-	Values         interface{}            `json:"values"`
-	ValueOverrides map[string]interface{} `json:"valueOverrides,omitempty" yaml:"valueOverrides,omitempty"`
-	TargetClusters []DeploymentStatus     `json:"targetClusters"`
 }
 
 // ListDeploymentResponse describes a deployment list response
@@ -80,7 +96,7 @@ type ListDeploymentResponse struct {
 	//Supported      bool               `json:"supported"`
 	//WhiteListed    bool               `json:"whiteListed"`
 	//Rejected       bool               `json:"rejected"`
-	//TargetClusters []DeploymentStatus `json:"targetClusters"`
+	//TargetClusters []TargetClusterStatus `json:"targetClusters"`
 }
 
 // DeleteResponse describes a deployment delete response

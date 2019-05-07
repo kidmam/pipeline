@@ -17,6 +17,7 @@ package common
 import (
 	"net/http"
 
+	"github.com/banzaicloud/pipeline/internal/clustergroup/deployment"
 	"github.com/gin-gonic/gin"
 	"github.com/goph/emperror"
 
@@ -49,7 +50,7 @@ func (e ErrorHandler) errorResponseFrom(err error) *pkgCommon.ErrorResponse {
 	}
 
 	var code int
-	if cgroup.IsClusterGroupNotFoundError(err) || cgroup.IsDeploymentNotFoundError(err) || cgroup.IsFeatureRecordNotFoundError(err) {
+	if cgroup.IsClusterGroupNotFoundError(err) || deployment.IsDeploymentNotFoundError(err) || cgroup.IsFeatureRecordNotFoundError(err) {
 		code = http.StatusNotFound
 	} else if cgroup.IsClusterGroupAlreadyExistsError(err) || cgroup.IsNoReadyMembersError(err) || cgroup.IsInvalidClusterGroupCreateRequestError(err) {
 		code = http.StatusBadRequest

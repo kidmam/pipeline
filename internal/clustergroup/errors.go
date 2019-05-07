@@ -36,7 +36,7 @@ func (e *unknownFeature) Context() []interface{} {
 
 // IsUnknownFeatureError returns true if the passed in error designates an unknown feature (no registered handler) error
 func IsUnknownFeatureError(err error) bool {
-	_, ok := errors.Cause(err).(*clusterGroupNotFoundError)
+	_, ok := errors.Cause(err).(*unknownFeature)
 
 	return ok
 }
@@ -110,29 +110,6 @@ func IsMemberClusterNotFoundError(err error) (*memberClusterNotFoundError, bool)
 	e, ok := errors.Cause(err).(*memberClusterNotFoundError)
 
 	return e, ok
-}
-
-type deploymentNotFoundError struct {
-	clusterGroupID uint
-	deploymentName string
-}
-
-func (e *deploymentNotFoundError) Error() string {
-	return "deployment not found"
-}
-
-func (e *deploymentNotFoundError) Context() []interface{} {
-	return []interface{}{
-		"clusterGroupID", e.clusterGroupID,
-		"deploymentName", e.deploymentName,
-	}
-}
-
-// IsDeploymentNotFoundError returns true if the passed in error designates a deployment not found error
-func IsDeploymentNotFoundError(err error) bool {
-	_, ok := errors.Cause(err).(*deploymentNotFoundError)
-
-	return ok
 }
 
 type recordNotFoundError struct{}

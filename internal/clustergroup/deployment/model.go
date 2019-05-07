@@ -12,14 +12,19 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-package clustergroup
+package deployment
 
 import (
+	"fmt"
+	"strings"
 	"time"
+
+	"github.com/jinzhu/gorm"
+	"github.com/sirupsen/logrus"
 )
 
 const clusterGroupDeploymentTableName = "clustergroup_deployments"
-const clusterGroupDeploymentOverridesTableName = "clustergroup_deployment_overrides"
+const clusterGroupDeploymentOverridesTableName = "clustergroup_deployment_target_clusters"
 
 // TableName changes the default table name.
 func (ClusterGroupDeploymentModel) TableName() string {
@@ -27,10 +32,11 @@ func (ClusterGroupDeploymentModel) TableName() string {
 }
 
 // TableName changes the default table name.
-func (DeploymentValueOverrides) TableName() string {
+func (TargetCluster) TableName() string {
 	return clusterGroupDeploymentOverridesTableName
 }
 
+// ClusterGroupDeploymentModel describes a cluster group deployment
 type ClusterGroupDeploymentModel struct {
 	ID                    uint `gorm:"primary_key"`
 	ClusterGroupID        uint
@@ -45,17 +51,36 @@ type ClusterGroupDeploymentModel struct {
 	ChartName             string
 	Namespace             string
 	OrganizationName      string
-	Wait                  bool
-	Timeout               int64
-	Values                []byte                     `sql:"type:text;"`
-	ValueOverrides        []DeploymentValueOverrides `gorm:"foreignkey:ClusterGroupDeploymentID"`
+	Values                []byte          `sql:"type:text;"`
+	TargetClusters        []TargetCluster `gorm:"foreignkey:ClusterGroupDeploymentID"`
 }
 
-// ClusterGroupFeature describes feature param of a cluster group.
-type DeploymentValueOverrides struct {
+// TargetCluster describes cluster specific values for a cluster group deployment
+type TargetCluster struct {
 	ID                       uint `gorm:"primary_key"`
 	ClusterGroupDeploymentID uint
 	ClusterID                uint
 	ClusterName              string
+	CreatedAt                time.Time
+	UpdatedAt                *time.Time
 	Values                   []byte `sql:"type:text;"`
+}
+
+// Migrate executes the table migrations for the cluster module.
+func Migrate(db *gorm.DB, logger logrus.FieldLogger) error {
+	tables := []interface{}{
+		&ClusterGroupDeploymentModel{},
+		&TargetCluster{},
+	}
+
+	var tableNames string
+	for _, table := range tables {
+		tableNames += fmt.Sprintf(" %s", db.NewScope(table).TableName())
+	}
+
+	logger.WithFields(logrus.Fields{
+		"table_names": strings.TrimSpace(tableNames),
+	}).Info("migrating model tables")
+
+	return db.AutoMigrate(tables...).Error
 }
