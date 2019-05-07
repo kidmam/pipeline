@@ -103,7 +103,7 @@ func (h *ServiceMeshFeatureHandler) ValidateProperties(properties interface{}) e
 	return nil
 }
 
-func (f *ServiceMeshFeatureHandler) GetMembersStatus(featureState api.Feature) (map[uint]string, error) {
+func (h *ServiceMeshFeatureHandler) GetMembersStatus(featureState api.Feature) (map[uint]string, error) {
 	statusMap := make(map[uint]string, 0)
 	for _, memberCluster := range featureState.ClusterGroup.Clusters {
 		statusMap[memberCluster.GetID()] = "ready"

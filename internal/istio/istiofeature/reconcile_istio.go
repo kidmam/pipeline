@@ -16,12 +16,16 @@ package istiofeature
 
 import (
 	"strings"
+	"time"
 
 	"github.com/goph/emperror"
+	"github.com/pkg/errors"
 	k8serrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
 	"github.com/banzaicloud/istio-operator/pkg/apis/istio/v1beta1"
+	istiooperatorclientset "github.com/banzaicloud/istio-operator/pkg/client/clientset/versioned"
+	"github.com/banzaicloud/pipeline/internal/backoff"
 	pkgCluster "github.com/banzaicloud/pipeline/pkg/cluster"
 )
 
@@ -59,6 +63,37 @@ func (m *MeshReconciler) ReconcileIstio(desiredState DesiredState) error {
 		if err != nil && !k8serrors.IsNotFound(err) {
 			return emperror.Wrap(err, "could not remove Istio CR")
 		}
+
+		err = m.waitForIstioCRToBeDeleted(client)
+		if err != nil {
+			return emperror.Wrap(err, "timeout during waiting for Istio CR to be deleted")
+		}
+	}
+
+	return nil
+}
+
+// waitForIstioCRToBeDeleted wait for Istio CR to be deleted
+func (m *MeshReconciler) waitForIstioCRToBeDeleted(client *istiooperatorclientset.Clientset) error {
+	m.logger.Debug("waiting for Istio CR to be deleted")
+
+	var backoffConfig = backoff.ConstantBackoffConfig{
+		Delay:      time.Duration(backoffDelaySeconds) * time.Second,
+		MaxRetries: backoffMaxretries,
+	}
+	var backoffPolicy = backoff.NewConstantBackoffPolicy(&backoffConfig)
+
+	err := backoff.Retry(func() error {
+		_, err := client.IstioV1beta1().Istios(istioOperatorNamespace).Get(m.Configuration.name, metav1.GetOptions{})
+		if k8serrors.IsNotFound(err) {
+			return nil
+		}
+
+		return errors.New("Istio CR still exists")
+	}, backoffPolicy)
+
+	if err != nil {
+		return errors.WithStack(err)
 	}
 
 	return nil

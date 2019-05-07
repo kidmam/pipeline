@@ -32,9 +32,13 @@ func (m *MeshReconciler) ReconcilePrometheusScrapeConfig(desiredState DesiredSta
 	if desiredState == DesiredStatePresent {
 		err := istio.AddPrometheusTargets(m.logger, client)
 		if err != nil {
-			return emperror.Wrap(err, "failed to add prometheus targets")
+			return emperror.Wrap(err, "could not add prometheus targets")
 		}
 	} else {
+		err := istio.RemovePrometheusTargets(m.logger, client)
+		if err != nil {
+			return emperror.Wrap(err, "could not remove prometheus targets")
+		}
 	}
 
 	return nil

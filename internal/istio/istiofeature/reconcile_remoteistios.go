@@ -27,6 +27,11 @@ import (
 	"github.com/banzaicloud/pipeline/pkg/k8sclient"
 )
 
+const (
+	backoffDelaySeconds = 10
+	backoffMaxretries   = 10
+)
+
 func (m *MeshReconciler) ReconcileRemoteIstios(desiredState DesiredState) error {
 	m.logger.Debug("reconciling Remote Istios")
 	defer m.logger.Debug("Remote Istios reconciled")
@@ -276,7 +281,7 @@ func (m *MeshReconciler) reconcileRemoteIstioClusterRole(desiredState DesiredSta
 			},
 			{
 				NonResourceURLs: []string{"*"},
-				Verbs:     []string{"*"},
+				Verbs:           []string{"*"},
 			},
 		},
 	}

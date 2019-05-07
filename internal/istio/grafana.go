@@ -29,18 +29,22 @@ import (
 	"k8s.io/client-go/kubernetes"
 
 	"github.com/banzaicloud/pipeline/config"
+	pkgCommon "github.com/banzaicloud/pipeline/pkg/common"
 )
 
 const (
 	getJsonFailed      = "failed to get Istio Grafana dashboard.json"
 	addDashboardFailed = "couldn't add Istio Grafana dashboard"
+
+	createdByLabel = pkgCommon.PipelineSpecificLabelsCommonPart + "/created-by"
+	appLabel       = pkgCommon.PipelineSpecificLabelsCommonPart + "/app"
 )
 
 func DeleteGrafanaDashboards(log logrus.FieldLogger, client kubernetes.Interface) error {
 	pipelineSystemNamespace := viper.GetString(config.PipelineSystemNamespace)
 
 	cms, err := client.CoreV1().ConfigMaps(pipelineSystemNamespace).List(metav1.ListOptions{
-		LabelSelector: "created-by=pipeline,service=grafana",
+		LabelSelector: createdByLabel + "=pipeline," + appLabel + "=grafana",
 	})
 	if err != nil {
 		return emperror.Wrap(err, "could not list configmaps")
@@ -73,8 +77,8 @@ func AddGrafanaDashboards(log logrus.FieldLogger, client kubernetes.Interface) e
 				Name: fmt.Sprintf("%s-grafana-dashboard", dashboard),
 				Labels: map[string]string{
 					"pipeline_grafana_dashboard": "1",
-					"created-by":                 "pipeline",
-					"service":                    "grafana",
+					createdByLabel:               "pipeline",
+					appLabel:                     "grafana",
 				},
 			},
 		})

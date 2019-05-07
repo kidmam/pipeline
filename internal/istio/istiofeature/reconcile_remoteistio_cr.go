@@ -16,14 +16,17 @@ package istiofeature
 
 import (
 	"strings"
+	"time"
 
-	corev1 "k8s.io/api/core/v1"
 	"github.com/goph/emperror"
+	corev1 "k8s.io/api/core/v1"
 	k8serrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
-	"github.com/banzaicloud/pipeline/cluster"
 	"github.com/banzaicloud/istio-operator/pkg/apis/istio/v1beta1"
+	istiooperatorclientset "github.com/banzaicloud/istio-operator/pkg/client/clientset/versioned"
+	"github.com/banzaicloud/pipeline/cluster"
+	"github.com/banzaicloud/pipeline/internal/backoff"
 	pkgCluster "github.com/banzaicloud/pipeline/pkg/cluster"
 )
 
@@ -61,9 +64,36 @@ func (m *MeshReconciler) ReconcileRemoteIstio(desiredState DesiredState, c clust
 		if err != nil && !k8serrors.IsNotFound(err) {
 			return emperror.Wrap(err, "could not remove Istio CR")
 		}
+
+		err = m.waitForRemoteIstioCRToBeDeleted(c.GetName(), client)
+		if err != nil {
+			return emperror.Wrap(err, "timeout during waiting for Remote Istio CR to be deleted")
+		}
 	}
 
 	return nil
+}
+
+// waitForRemoteIstioCRToBeDeleted wait for Istio CR to be deleted
+func (m *MeshReconciler) waitForRemoteIstioCRToBeDeleted(name string, client *istiooperatorclientset.Clientset) error {
+	m.logger.WithField("name", name).Debug("waiting for Remote Istio CR to be deleted")
+
+	var backoffConfig = backoff.ConstantBackoffConfig{
+		Delay:      time.Duration(backoffDelaySeconds) * time.Second,
+		MaxRetries: backoffMaxretries,
+	}
+	var backoffPolicy = backoff.NewConstantBackoffPolicy(&backoffConfig)
+
+	err := backoff.Retry(func() error {
+		_, err := client.IstioV1beta1().Istios(istioOperatorNamespace).Get(m.Configuration.name, metav1.GetOptions{})
+		if k8serrors.IsNotFound(err) {
+			return nil
+		}
+
+		return emperror.WrapWith(err, "Remote Istio CR still exists", "name", name)
+	}, backoffPolicy)
+
+	return err
 }
 
 // generateRemoteIstioCR generates istio-operator specific CR based on the given params
@@ -86,7 +116,7 @@ func (m *MeshReconciler) generateRemoteIstioCR(config Config, ipRanges *pkgClust
 					Name: "istio-pilot",
 					Ports: []corev1.ServicePort{
 						{
-							Port: 65000,
+							Port:     65000,
 							Protocol: corev1.ProtocolTCP,
 						},
 					},
@@ -95,7 +125,7 @@ func (m *MeshReconciler) generateRemoteIstioCR(config Config, ipRanges *pkgClust
 					Name: "istio-policy",
 					Ports: []corev1.ServicePort{
 						{
-							Port: 65000,
+							Port:     65000,
 							Protocol: corev1.ProtocolTCP,
 						},
 					},
@@ -104,14 +134,14 @@ func (m *MeshReconciler) generateRemoteIstioCR(config Config, ipRanges *pkgClust
 					Name: "istio-telemetry",
 					Ports: []corev1.ServicePort{
 						{
-							Port: 65000,
+							Port:     65000,
 							Protocol: corev1.ProtocolTCP,
 						},
 					},
 				},
 			},
 			SidecarInjector: v1beta1.SidecarInjectorConfiguration{
-				Enabled: &enabled,
+				Enabled:      &enabled,
 				ReplicaCount: 1,
 			},
 		},
