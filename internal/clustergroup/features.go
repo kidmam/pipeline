@@ -37,7 +37,7 @@ func (g *Manager) GetFeatureHandler(featureName string) (api.FeatureHandler, err
 	return handler, nil
 }
 
-func (g *Manager) GetFeatureStatus(feature api.Feature) (map[string]string, error) {
+func (g *Manager) GetFeatureStatus(feature api.Feature) (map[uint]string, error) {
 	handler, ok := g.featureHandlerMap[feature.Name]
 	if !ok {
 		return nil, nil

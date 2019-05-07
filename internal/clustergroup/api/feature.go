@@ -19,9 +19,9 @@ type FeatureRequest interface{}
 
 // FeatureResponse
 type FeatureResponse struct {
-	Properties FeatureRequest    `json:"properties,omitempty" yaml:"properties"`
-	Enabled    bool              `json:"enabled"`
-	Status     map[string]string `json:"status,omitempty" yaml:"status"`
+	Properties FeatureRequest  `json:"properties,omitempty" yaml:"properties"`
+	Enabled    bool            `json:"enabled"`
+	Status     map[uint]string `json:"status,omitempty" yaml:"status"`
 }
 
 // Feature
@@ -36,5 +36,5 @@ type FeatureHandler interface {
 	ReconcileState(featureState Feature) error
 	ValidateState(featureState Feature) error
 	ValidateProperties(properties interface{}) error
-	GetMembersStatus(featureState Feature) (map[string]string, error)
+	GetMembersStatus(featureState Feature) (map[uint]string, error)
 }

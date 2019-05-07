@@ -83,10 +83,10 @@ func (m *CGDeploymentManager) ValidateProperties(properties interface{}) error {
 	return nil
 }
 
-func (m *CGDeploymentManager) GetMembersStatus(featureState api.Feature) (map[string]string, error) {
-	statusMap := make(map[string]string, 0)
+func (m *CGDeploymentManager) GetMembersStatus(featureState api.Feature) (map[uint]string, error) {
+	statusMap := make(map[uint]string, 0)
 	for _, memberCluster := range featureState.ClusterGroup.Clusters {
-		statusMap[memberCluster.GetName()] = "ready"
+		statusMap[memberCluster.GetID()] = "ready"
 	}
 	return statusMap, nil
 }
