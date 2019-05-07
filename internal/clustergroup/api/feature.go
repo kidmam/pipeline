@@ -19,9 +19,11 @@ type FeatureRequest interface{}
 
 // FeatureResponse
 type FeatureResponse struct {
-	Properties FeatureRequest  `json:"properties,omitempty" yaml:"properties"`
-	Enabled    bool            `json:"enabled"`
-	Status     map[uint]string `json:"status,omitempty" yaml:"status"`
+	Name         string          `json:"name"`
+	ClusterGroup ClusterGroup    `json:"clusterGroup"`
+	Enabled      bool            `json:"enabled"`
+	Properties   FeatureRequest  `json:"properties,omitempty" yaml:"properties"`
+	Status       map[uint]string `json:"status,omitempty" yaml:"status"`
 }
 
 // Feature

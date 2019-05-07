@@ -51,7 +51,7 @@ func (e ErrorHandler) errorResponseFrom(err error) *pkgCommon.ErrorResponse {
 	var code int
 	if cgroup.IsClusterGroupNotFoundError(err) || cgroup.IsDeploymentNotFoundError(err) || cgroup.IsFeatureRecordNotFoundError(err) {
 		code = http.StatusNotFound
-	} else if cgroup.IsClusterGroupAlreadyExistsError(err) || cgroup.IsNoReadyMembersError(err) {
+	} else if cgroup.IsClusterGroupAlreadyExistsError(err) || cgroup.IsNoReadyMembersError(err) || cgroup.IsInvalidClusterGroupCreateRequestError(err) {
 		code = http.StatusBadRequest
 	}
 

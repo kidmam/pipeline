@@ -45,7 +45,9 @@ func (n *API) Get(c *gin.Context) {
 	}
 
 	var response cgroupIAPI.FeatureResponse
+	response.Name = feature.Name
 	response.Enabled = feature.Enabled
+	response.ClusterGroup = feature.ClusterGroup
 	response.Properties = feature.Properties
 
 	//call feature handler to get statuses

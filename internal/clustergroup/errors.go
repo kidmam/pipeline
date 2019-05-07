@@ -234,3 +234,21 @@ func IsMemberClusterPartOfAClusterGroupError(err error) (*memberClusterPartOfACl
 
 	return e, ok
 }
+
+type invalidClusterGroupCreateRequestError struct {
+	message string
+}
+
+func (e *invalidClusterGroupCreateRequestError) Error() string {
+	if e.message == "" {
+		e.message = "invalid cluster create request"
+	}
+	return e.message
+}
+
+// IsInvalidClusterGroupCreateRequestError returns true if the passed in error designates invalid cluster group create request
+func IsInvalidClusterGroupCreateRequestError(err error) bool {
+	_, ok := errors.Cause(err).(*invalidClusterGroupCreateRequestError)
+
+	return ok
+}

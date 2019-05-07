@@ -43,7 +43,9 @@ func NewClusterGroupRepository(
 // FindOne returns a cluster group instance for an organization by clusterGroupId.
 func (g *ClusterGroupRepository) FindOne(cg ClusterGroupModel) (*ClusterGroupModel, error) {
 	if cg.ID == 0 && len(cg.Name) == 0 {
-		return nil, errors.New("either clusterGroupId or name is required")
+		return nil, &invalidClusterGroupCreateRequestError{
+			message: "either clusterGroupId or name is required",
+		}
 	}
 	var result ClusterGroupModel
 	err := g.db.Where(cg).Preload("Members").Preload("FeatureParams").First(&result).Error
