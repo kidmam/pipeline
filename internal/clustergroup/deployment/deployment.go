@@ -79,7 +79,7 @@ type TargetClusterStatus struct {
 	Cloud        string `json:"cloud,omitempty"`
 	Distribution string `json:"distribution,omitempty"`
 	Status       string `json:"status"`
-	Stale        bool   `json:"stale,omitempty"`
+	Stale        bool   `json:"stale"`
 	Version      string `json:"version,omitempty"`
 }
 
@@ -93,10 +93,6 @@ type ListDeploymentResponse struct {
 	UpdatedAt    time.Time `json:"updatedAt"`
 	Namespace    string    `json:"namespace"`
 	CreatedAt    time.Time `json:"createdAt,omitempty"`
-	//Supported      bool               `json:"supported"`
-	//WhiteListed    bool               `json:"whiteListed"`
-	//Rejected       bool               `json:"rejected"`
-	//TargetClusters []TargetClusterStatus `json:"targetClusters"`
 }
 
 // DeleteResponse describes a deployment delete response

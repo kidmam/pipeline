@@ -67,3 +67,26 @@ func IsDeploymentNotFoundError(err error) bool {
 
 	return ok
 }
+
+type deploymentAlreadyExistsError struct {
+	clusterGroupID uint
+	releaseName    string
+}
+
+func (e *deploymentAlreadyExistsError) Error() string {
+	return "deployment already exists with this release name"
+}
+
+func (e *deploymentAlreadyExistsError) Context() []interface{} {
+	return []interface{}{
+		"clusterGroupID", e.clusterGroupID,
+		"releaseName", e.releaseName,
+	}
+}
+
+// IsDeploymentAlreadyExistsError returns true if the passed in error designates a deployment already exists error
+func IsDeploymentAlreadyExistsError(err error) bool {
+	_, ok := errors.Cause(err).(*deploymentAlreadyExistsError)
+
+	return ok
+}

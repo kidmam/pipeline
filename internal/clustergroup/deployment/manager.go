@@ -84,10 +84,10 @@ func (m *CGDeploymentManager) ReconcileState(featureState api.Feature) error {
 
 		if !featureState.Enabled {
 			// if feature is disabled delete all deployments belonging to the cluster group
-			m.DeleteDeployment(&featureState.ClusterGroup, deployment.DeploymentName, false)
+			m.DeleteDeployment(&featureState.ClusterGroup, deployment.DeploymentReleaseName, false)
 		} else {
 			// delete deployment from clusters not belonging to the group anymore
-			m.deleteDeploymentFromTargetClusters(&featureState.ClusterGroup, deployment.DeploymentName, deployment, false, false)
+			m.deleteDeploymentFromTargetClusters(&featureState.ClusterGroup, deployment.DeploymentReleaseName, deployment, false, false)
 		}
 
 	}
@@ -262,7 +262,7 @@ func (m CGDeploymentManager) isStaleDeployment(release *hapi_release5.Release, d
 	if err != nil {
 		return false
 	}
-	m.logger.Debugf("release values: \n%s \nuser values:\n%s ", release.Config.Raw, string(values))
+	m.logger.Debugf("%s release values: \n%s \nuser values:\n%s ", apiCluster.GetName(), release.Config.Raw, string(values))
 
 	if len(release.Config.Raw) != len(string(values)) || release.Config.Raw != string(values) {
 		return true
@@ -518,14 +518,14 @@ func (m CGDeploymentManager) deleteDeploymentFromCluster(clusterId uint, apiClus
 }
 
 // DeleteDeployment deletes deployments from target clusters
-func (m CGDeploymentManager) DeleteDeployment(clusterGroup *api.ClusterGroup, deploymentName string, forceDelete bool) ([]TargetClusterStatus, error) {
+func (m CGDeploymentManager) DeleteDeployment(clusterGroup *api.ClusterGroup, releaseName string, forceDelete bool) ([]TargetClusterStatus, error) {
 
-	deploymentModel, err := m.repository.FindByName(clusterGroup.Id, deploymentName)
+	deploymentModel, err := m.repository.FindByName(clusterGroup.Id, releaseName)
 	if err != nil {
 		return nil, err
 	}
 
-	targetClustersStatus, err := m.deleteDeploymentFromTargetClusters(clusterGroup, deploymentName, deploymentModel, true, forceDelete)
+	targetClustersStatus, err := m.deleteDeploymentFromTargetClusters(clusterGroup, releaseName, deploymentModel, true, forceDelete)
 	if err != nil {
 		return nil, err
 	}
@@ -534,9 +534,9 @@ func (m CGDeploymentManager) DeleteDeployment(clusterGroup *api.ClusterGroup, de
 }
 
 // SyncDeployment deletes deployments from target clusters not belonging to the group anymore, installs or upgrades to member clusters
-func (m CGDeploymentManager) SyncDeployment(clusterGroup *api.ClusterGroup, orgName string, deploymentName string) ([]TargetClusterStatus, error) {
+func (m CGDeploymentManager) SyncDeployment(clusterGroup *api.ClusterGroup, orgName string, releaseName string) ([]TargetClusterStatus, error) {
 
-	deploymentModel, err := m.repository.FindByName(clusterGroup.Id, deploymentName)
+	deploymentModel, err := m.repository.FindByName(clusterGroup.Id, releaseName)
 	if err != nil {
 		return nil, err
 	}
@@ -550,14 +550,14 @@ func (m CGDeploymentManager) SyncDeployment(clusterGroup *api.ClusterGroup, orgN
 	response := make([]TargetClusterStatus, 0)
 
 	env := helm.GenerateHelmRepoEnv(orgName)
-	requestedChart, err := helm.GetRequestedChart(depInfo.ReleaseName, depInfo.ChartName, depInfo.ChartVersion, deploymentModel.DeploymentPackage, env)
+	requestedChart, err := helm.GetRequestedChart(depInfo.ReleaseName, depInfo.Chart, depInfo.ChartVersion, deploymentModel.DeploymentPackage, env)
 	if err != nil {
 		return nil, fmt.Errorf("error loading chart: %v", err)
 	}
 	targetClustersStatus := m.upgradeOrInstallDeploymentToTargetClusters(clusterGroup, orgName, env, depInfo, requestedChart, false)
 	response = append(response, targetClustersStatus...)
 
-	targetClustersStatus, err = m.deleteDeploymentFromTargetClusters(clusterGroup, deploymentName, deploymentModel, false, false)
+	targetClustersStatus, err = m.deleteDeploymentFromTargetClusters(clusterGroup, releaseName, deploymentModel, false, false)
 	if err != nil {
 		return nil, err
 	}
@@ -569,7 +569,7 @@ func (m CGDeploymentManager) SyncDeployment(clusterGroup *api.ClusterGroup, orgN
 // deleteDeploymentFromTargetClusters deletes deployments from targeted clusters
 // if deleteAll = true deployments from all targeted clusters are deleted,
 // otherwise only stale deployments from targets not belonging to the cluster group anymore
-func (m CGDeploymentManager) deleteDeploymentFromTargetClusters(clusterGroup *api.ClusterGroup, deploymentName string, deploymentModel *ClusterGroupDeploymentModel, deleteAll bool, forceDelete bool) ([]TargetClusterStatus, error) {
+func (m CGDeploymentManager) deleteDeploymentFromTargetClusters(clusterGroup *api.ClusterGroup, releaseName string, deploymentModel *ClusterGroupDeploymentModel, deleteAll bool, forceDelete bool) ([]TargetClusterStatus, error) {
 
 	// get deployment status for each cluster group member
 	targetClustersStatus := make([]TargetClusterStatus, 0)
@@ -579,10 +579,11 @@ func (m CGDeploymentManager) deleteDeploymentFromTargetClusters(clusterGroup *ap
 	defer close(statusChan)
 
 	for _, clusterOverride := range deploymentModel.TargetClusters {
-		deploymentCount++
+
 		apiCluster, exists := clusterGroup.Clusters[clusterOverride.ClusterID]
 		// delete if deleteAll or in case target doesn't belongs to the cluster group anymore
 		if deleteAll || !exists {
+			deploymentCount++
 			go func(clusterID uint, apiCluster api.Cluster, name string) {
 				clErr := m.deleteDeploymentFromCluster(clusterID, apiCluster, name)
 				status := DeletedStatus
@@ -602,7 +603,7 @@ func (m CGDeploymentManager) deleteDeploymentFromTargetClusters(clusterGroup *ap
 					depStatus.ClusterName = apiCluster.GetName()
 				}
 				statusChan <- depStatus
-			}(clusterOverride.ClusterID, apiCluster, deploymentName)
+			}(clusterOverride.ClusterID, apiCluster, releaseName)
 		}
 
 	}
@@ -660,6 +661,17 @@ func (m CGDeploymentManager) CreateDeployment(clusterGroup *api.ClusterGroup, or
 		return nil, errors.Errorf("release name is mandatory")
 	}
 
+	deploymentModel, err := m.repository.FindByName(clusterGroup.Id, cgDeployment.ReleaseName)
+	if err != nil && !IsDeploymentNotFoundError(err) {
+		return nil, err
+	}
+	if deploymentModel != nil {
+		return nil, &deploymentAlreadyExistsError{
+			clusterGroupID: clusterGroup.Id,
+			releaseName:    cgDeployment.ReleaseName,
+		}
+	}
+
 	env := helm.GenerateHelmRepoEnv(orgName)
 	requestedChart, err := helm.GetRequestedChart(cgDeployment.ReleaseName, cgDeployment.Name, cgDeployment.Version, cgDeployment.Package, env)
 	if err != nil {
@@ -676,7 +688,7 @@ func (m CGDeploymentManager) CreateDeployment(clusterGroup *api.ClusterGroup, or
 	}
 
 	// save deployment
-	deploymentModel, err := m.createDeploymentModel(clusterGroup, orgName, cgDeployment, requestedChart)
+	deploymentModel, err = m.createDeploymentModel(clusterGroup, orgName, cgDeployment, requestedChart)
 	if err != nil {
 		return nil, emperror.Wrap(err, "Error creating deployment model")
 	}
