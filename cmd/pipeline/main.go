@@ -47,6 +47,7 @@ import (
 	"github.com/banzaicloud/pipeline/api/cluster/namespace"
 	"github.com/banzaicloud/pipeline/api/cluster/pke"
 	cgroupAPI "github.com/banzaicloud/pipeline/api/clustergroup"
+	cgFeatureIstio "github.com/banzaicloud/pipeline/internal/istio/istiofeature"
 	"github.com/banzaicloud/pipeline/api/common"
 	"github.com/banzaicloud/pipeline/api/middleware"
 	"github.com/banzaicloud/pipeline/auth"
@@ -270,8 +271,10 @@ func main() {
 	clusterGroupManager := clustergroup.NewManager(cgroupAdapter, clustergroup.NewClusterGroupRepository(db, log), log, errorHandler)
 	federationHandler := federation.NewFederationHandler(log, errorHandler)
 	deploymentManager := deployment.NewCGDeploymentManager(db, cgroupAdapter, log, errorHandler)
+	serviceMeshFeatureHandler := cgFeatureIstio.NewServiceMeshFeatureHandler(cgroupAdapter, log, errorHandler)
 	clusterGroupManager.RegisterFeatureHandler(federation.FeatureName, federationHandler)
 	clusterGroupManager.RegisterFeatureHandler(deployment.FeatureName, deploymentManager)
+	clusterGroupManager.RegisterFeatureHandler(cgFeatureIstio.FeatureName, serviceMeshFeatureHandler)
 
 	nplsApi := api.NewNodepoolManagerAPI(clusterGetter, log, errorHandler)
 

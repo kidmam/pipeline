@@ -15,7 +15,9 @@
 package istiofeature
 
 import (
+	"context"
 	"encoding/base64"
+	"strconv"
 
 	"github.com/goph/emperror"
 	corev1 "k8s.io/api/core/v1"
@@ -36,13 +38,28 @@ func (m *MeshReconciler) ReconcileRemoteIstios(desiredState DesiredState) error 
 	m.logger.Debug("reconciling Remote Istios")
 	defer m.logger.Debug("Remote Istios reconciled")
 
-	if len(m.Remotes) == 0 {
-		m.logger.Debug("no remotes set")
-		return nil
+	remoteClusterIDs := make(map[uint]bool)
+	if len(m.Remotes) > 0 {
+		for _, remoteCluster := range m.Remotes {
+			remoteClusterIDs[remoteCluster.GetID()] = true
+			err := m.reconcileRemoteIstio(desiredState, remoteCluster)
+			if err != nil {
+				return err
+			}
+		}
 	}
 
-	for _, remoteCluster := range m.Remotes {
-		err := m.reconcileRemoteIstio(desiredState, remoteCluster)
+	clustersByRemoteIstios, err := m.getRemoteClustersByExistingRemoteIstioCRs()
+	if err != nil {
+		return err
+	}
+
+	for _, remoteCluster := range clustersByRemoteIstios {
+		if remoteClusterIDs[remoteCluster.GetID()] == true {
+			continue
+		}
+
+		err := m.reconcileRemoteIstio(DesiredStateAbsent, remoteCluster)
 		if err != nil {
 			return err
 		}
@@ -353,4 +370,45 @@ func (m *MeshReconciler) reconcileRemoteIstioClusterRoleBinding(desiredState Des
 	}
 
 	return nil
+}
+
+func (m *MeshReconciler) getRemoteClustersByExistingRemoteIstioCRs() (map[uint]cluster.CommonCluster, error) {
+	clusters := make(map[uint]cluster.CommonCluster, 0)
+
+	client, err := m.GetMasterIstioOperatorK8sClient()
+	if err != nil {
+		return nil, err
+	}
+
+	remoteistios, err := client.IstioV1beta1().RemoteIstios(istioOperatorNamespace).List(metav1.ListOptions{})
+	if err != nil {
+		return nil, err
+	}
+
+	for _, remoteistio := range remoteistios.Items {
+		labels := remoteistio.GetLabels()
+		if len(labels) == 0 {
+			continue
+		}
+		cID := remoteistio.Labels["cluster.banzaicloud.com/id"]
+		if cID == "" {
+			continue
+		}
+
+		clusterID, err := strconv.ParseUint(cID, 10, 64)
+		if err != nil {
+			m.errorHandler.Handle(err)
+			continue
+		}
+
+		c, err := m.clusterGetter.GetClusterByID(context.Background(), m.Master.GetOrganizationId(), uint(clusterID))
+		if err != nil {
+			m.errorHandler.Handle(err)
+			continue
+		}
+
+		clusters[c.GetID()] = c.(cluster.CommonCluster)
+	}
+
+	return clusters, nil
 }

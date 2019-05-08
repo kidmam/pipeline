@@ -25,20 +25,23 @@ import (
 )
 
 type ServiceMeshFeatureHandler struct {
-	logger       logrus.FieldLogger
-	errorHandler emperror.Handler
+	clusterGetter api.ClusterGetter
+	logger        logrus.FieldLogger
+	errorHandler  emperror.Handler
 }
 
 const FeatureName = "servicemesh"
 
 // NewServiceMeshFeatureHandler returns a new ServiceMeshFeatureHandler instance.
 func NewServiceMeshFeatureHandler(
+	clusterGetter api.ClusterGetter,
 	logger logrus.FieldLogger,
 	errorHandler emperror.Handler,
 ) *ServiceMeshFeatureHandler {
 	return &ServiceMeshFeatureHandler{
-		logger:       logger,
-		errorHandler: errorHandler,
+		clusterGetter: clusterGetter,
+		logger:        logger,
+		errorHandler:  errorHandler,
 	}
 }
 
@@ -61,7 +64,7 @@ func (h *ServiceMeshFeatureHandler) ReconcileState(featureState api.Feature) err
 		return errors.WithStack(err)
 	}
 
-	mesh := NewMeshReconciler(*config, logger, h.errorHandler)
+	mesh := NewMeshReconciler(*config, h.clusterGetter, logger, h.errorHandler)
 	err = mesh.Reconcile()
 	if err != nil {
 		h.errorHandler.Handle(err)
@@ -89,7 +92,7 @@ func (h *ServiceMeshFeatureHandler) ValidateState(featureState api.Feature) erro
 	return nil
 }
 
-func (h *ServiceMeshFeatureHandler) ValidateProperties(properties interface{}) error {
+func (h *ServiceMeshFeatureHandler) ValidateProperties(clusterGroup api.ClusterGroup, properties interface{}) error {
 	var config Config
 	err := mapstructure.Decode(properties, &config)
 	if err != nil {
@@ -98,6 +101,17 @@ func (h *ServiceMeshFeatureHandler) ValidateProperties(properties interface{}) e
 
 	if config.MasterClusterID == 0 {
 		return errors.New("master cluster ID is required")
+	}
+
+	masterClusterIsAMember := false
+	for _, member := range clusterGroup.Members {
+		if member.ID == config.MasterClusterID {
+			masterClusterIsAMember = true
+		}
+	}
+
+	if !masterClusterIsAMember {
+		return errors.New("the specified master cluster is not a member of the cluster group")
 	}
 
 	return nil

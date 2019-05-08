@@ -15,6 +15,7 @@
 package istiofeature
 
 import (
+	"strconv"
 	"strings"
 	"time"
 
@@ -103,7 +104,10 @@ func (m *MeshReconciler) generateRemoteIstioCR(config Config, ipRanges *pkgClust
 		ObjectMeta: metav1.ObjectMeta{
 			Name: c.GetName(),
 			Labels: map[string]string{
-				"controller-tools.k8s.io": "1.0",
+				"controller-tools.k8s.io":              "1.0",
+				"cluster.banzaicloud.com/id":           strconv.FormatUint(uint64(c.GetID()), 10),
+				"cluster.banzaicloud.com/cloud":        c.GetCloud(),
+				"cluster.banzaicloud.com/distribution": c.GetDistribution(),
 			},
 		},
 		Spec: v1beta1.RemoteIstioSpec{

@@ -21,15 +21,17 @@ import (
 
 	istiooperatorclientset "github.com/banzaicloud/istio-operator/pkg/client/clientset/versioned"
 	"github.com/banzaicloud/pipeline/cluster"
+	"github.com/banzaicloud/pipeline/internal/clustergroup/api"
 	"github.com/banzaicloud/pipeline/pkg/k8sclient"
 )
 
-func NewMeshReconciler(config Config, logger logrus.FieldLogger, errorHandler emperror.Handler) *MeshReconciler {
+func NewMeshReconciler(config Config, clusterGetter api.ClusterGetter, logger logrus.FieldLogger, errorHandler emperror.Handler) *MeshReconciler {
 	reconciler := &MeshReconciler{
 		Configuration: config,
 
-		logger:       logger,
-		errorHandler: errorHandler,
+		clusterGetter: clusterGetter,
+		logger:        logger,
+		errorHandler:  errorHandler,
 	}
 
 	reconciler.init()
