@@ -53,7 +53,7 @@ func (f *Handler) ValidateState(featureState api.Feature) error {
 	return nil
 }
 
-func (f *Handler) ValidateProperties(properties interface{}) error {
+func (f *Handler) ValidateProperties(clusterGroup api.ClusterGroup, properties interface{}) error {
 	return nil
 }
 

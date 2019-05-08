@@ -37,6 +37,6 @@ type Feature struct {
 type FeatureHandler interface {
 	ReconcileState(featureState Feature) error
 	ValidateState(featureState Feature) error
-	ValidateProperties(properties interface{}) error
+	ValidateProperties(clusterGroup ClusterGroup, properties interface{}) error
 	GetMembersStatus(featureState Feature) (map[uint]string, error)
 }

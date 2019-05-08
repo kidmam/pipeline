@@ -177,8 +177,13 @@ func (g *Manager) UpdateClusterGroup(ctx context.Context, orgID uint, clusterGro
 		return err
 	}
 
+	clusterGroup, err := g.GetClusterGroupByID(ctx, existingClusterGroup.Id)
+	if err != nil {
+		return err
+	}
+
 	// call feature handlers on members update
-	err = g.ReconcileFeatures(*existingClusterGroup, true)
+	err = g.ReconcileFeatures(*clusterGroup, true)
 	if err != nil {
 		return err
 	}

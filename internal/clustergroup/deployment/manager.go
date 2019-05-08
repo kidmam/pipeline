@@ -99,7 +99,7 @@ func (m *CGDeploymentManager) ValidateState(featureState api.Feature) error {
 	return nil
 }
 
-func (m *CGDeploymentManager) ValidateProperties(properties interface{}) error {
+func (m *CGDeploymentManager) ValidateProperties(clusterGroup api.ClusterGroup, properties interface{}) error {
 	return nil
 }
 

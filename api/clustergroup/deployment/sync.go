@@ -16,13 +16,13 @@ package deployment
 
 import (
 	"context"
-	pkgCommon "github.com/banzaicloud/pipeline/pkg/common"
 	"net/http"
 
-	"github.com/banzaicloud/pipeline/auth"
-	"github.com/gin-gonic/gin"
+	pkgCommon "github.com/banzaicloud/pipeline/pkg/common"
 
+	"github.com/banzaicloud/pipeline/auth"
 	ginutils "github.com/banzaicloud/pipeline/internal/platform/gin/utils"
+	"github.com/gin-gonic/gin"
 )
 
 func (n *API) Sync(c *gin.Context) {

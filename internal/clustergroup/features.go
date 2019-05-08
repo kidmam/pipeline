@@ -218,7 +218,7 @@ func (g *Manager) setFeatureParams(featureName string, clusterGroup *api.Cluster
 		return emperror.Wrap(err, "could not get feature handler")
 	}
 
-	err = handler.ValidateProperties(properties)
+	err = handler.ValidateProperties(*clusterGroup, properties)
 	if err != nil {
 		return emperror.Wrap(err, "invalid properties")
 	}
