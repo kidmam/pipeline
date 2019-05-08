@@ -149,7 +149,10 @@ func (g *Manager) GetFeature(clusterGroup api.ClusterGroup, featureName string) 
 	}
 
 	var featureProperties interface{}
-	json.Unmarshal(result.Properties, featureProperties)
+	err = json.Unmarshal(result.Properties, &featureProperties)
+	if err != nil {
+		return nil, emperror.Wrap(err, "could not unmarshal feature properties")
+	}
 	feature := &api.Feature{
 		ClusterGroup: clusterGroup,
 		Properties:   featureProperties,
