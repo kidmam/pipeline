@@ -200,7 +200,7 @@ func (m CGDeploymentManager) upgradeOrInstallDeploymentOnCluster(apiCluster api.
 			return err
 		}
 	} else {
-		log.Infof("nothing to do deployment %s on %s is up to date")
+		log.Info("nothing to do deployment is up to date")
 	}
 
 	return nil
