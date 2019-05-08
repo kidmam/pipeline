@@ -21,18 +21,19 @@ import (
 	pkgCommon "github.com/banzaicloud/pipeline/pkg/common"
 
 	"github.com/banzaicloud/pipeline/auth"
-	ginutils "github.com/banzaicloud/pipeline/internal/platform/gin/utils"
 	"github.com/gin-gonic/gin"
+
+	gutils "github.com/banzaicloud/pipeline/internal/platform/gin/utils"
 )
 
 func (n *API) Sync(c *gin.Context) {
 
-	ctx := ginutils.Context(context.Background(), c)
+	ctx := gutils.Context(context.Background(), c)
 
 	name := c.Param("name")
 	n.logger.Infof("sync cluster group deployment: [%s]", name)
 
-	clusterGroupId, ok := ginutils.UintParam(c, "id")
+	clusterGroupId, ok := gutils.UintParam(c, "id")
 	if !ok {
 		return
 	}

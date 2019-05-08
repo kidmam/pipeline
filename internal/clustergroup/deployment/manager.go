@@ -108,8 +108,9 @@ func (m *CGDeploymentManager) GetMembersStatus(featureState api.Feature) (map[ui
 	return statusMap, nil
 }
 
-func (m CGDeploymentManager) installDeploymentOnCluster(apiCluster api.Cluster, orgName string, env helm_env.EnvSettings, depInfo *DeploymentInfo, requestedChart *chart.Chart, dryRun bool) error {
-	m.logger.Infof("install cluster group deployment %s on %s", depInfo.ReleaseName, apiCluster.GetName())
+func (m CGDeploymentManager) installDeploymentOnCluster(log *logrus.Entry, apiCluster api.Cluster, orgName string, env helm_env.EnvSettings, depInfo *DeploymentInfo, requestedChart *chart.Chart, dryRun bool) error {
+	log.Info("install cluster group deployment")
+
 	k8sConfig, err := apiCluster.GetK8sConfig()
 	if err != nil {
 		return err
@@ -134,7 +135,7 @@ func (m CGDeploymentManager) installDeploymentOnCluster(apiCluster api.Cluster, 
 	}
 	installOptions := append(helm.DefaultInstallOptions, options...)
 
-	release, err := hClient.InstallReleaseFromChart(
+	_, err = hClient.InstallReleaseFromChart(
 		requestedChart,
 		depInfo.Namespace,
 		installOptions...,
@@ -143,12 +144,13 @@ func (m CGDeploymentManager) installDeploymentOnCluster(apiCluster api.Cluster, 
 		return fmt.Errorf("error deploying chart: %v", err)
 	}
 
-	m.logger.Infof("installing cluster group deployment %s on %s succeeded: %s", release.Release.Name, apiCluster.GetName(), release.String())
+	log.Info("installing cluster group deployment succeeded")
 	return nil
 }
 
-func (m CGDeploymentManager) upgradeDeploymentOnCluster(apiCluster api.Cluster, orgName string, env helm_env.EnvSettings, depInfo *DeploymentInfo, requestedChart *chart.Chart, dryRun bool) error {
-	m.logger.Infof("upgrade cluster group deployment %s on %s", depInfo.ReleaseName, apiCluster.GetName())
+func (m CGDeploymentManager) upgradeDeploymentOnCluster(log *logrus.Entry, apiCluster api.Cluster, orgName string, env helm_env.EnvSettings, depInfo *DeploymentInfo, requestedChart *chart.Chart, dryRun bool) error {
+	log.Info("upgrade cluster group deployment")
+
 	k8sConfig, err := apiCluster.GetK8sConfig()
 	if err != nil {
 		return err
@@ -165,7 +167,7 @@ func (m CGDeploymentManager) upgradeDeploymentOnCluster(apiCluster api.Cluster, 
 	}
 	defer hClient.Close()
 
-	upgradeRes, err := hClient.UpdateReleaseFromChart(
+	_, err = hClient.UpdateReleaseFromChart(
 		depInfo.ReleaseName,
 		requestedChart,
 		k8sHelm.UpdateValueOverrides(values),
@@ -177,26 +179,28 @@ func (m CGDeploymentManager) upgradeDeploymentOnCluster(apiCluster api.Cluster, 
 		return fmt.Errorf("error deploying chart: %v", err)
 	}
 
-	m.logger.Infof("upgrading cluster group deployment %s on %s succeeded: %s", depInfo.ReleaseName, apiCluster.GetName(), upgradeRes.String())
+	log.Info("upgrading cluster group deployment succeeded")
 	return nil
 }
 
 func (m CGDeploymentManager) upgradeOrInstallDeploymentOnCluster(apiCluster api.Cluster, orgName string, env helm_env.EnvSettings, depInfo *DeploymentInfo, requestedChart *chart.Chart, dryRun bool) error {
+	log := m.logger.WithFields(logrus.Fields{"deploymentName": depInfo.Chart, "releaseName": depInfo.ReleaseName, "clusterName": apiCluster.GetName(), "clusterId": apiCluster.GetID()})
+
 	status := m.getClusterDeploymentStatus(apiCluster, depInfo.ReleaseName, depInfo)
 	if status.Status == NotInstalledStatus {
-		err := m.installDeploymentOnCluster(apiCluster, orgName, env, depInfo, requestedChart, dryRun)
+		err := m.installDeploymentOnCluster(log, apiCluster, orgName, env, depInfo, requestedChart, dryRun)
 		if err != nil {
 			return err
 		}
 	}
 
 	if status.Stale {
-		err := m.upgradeDeploymentOnCluster(apiCluster, orgName, env, depInfo, requestedChart, dryRun)
+		err := m.upgradeDeploymentOnCluster(log, apiCluster, orgName, env, depInfo, requestedChart, dryRun)
 		if err != nil {
 			return err
 		}
 	} else {
-		m.logger.Infof("nothing to do deployment %s on %s is up to date", depInfo.ReleaseName, apiCluster.GetName())
+		log.Infof("nothing to do deployment %s on %s is up to date")
 	}
 
 	return nil
@@ -283,9 +287,9 @@ func (m CGDeploymentManager) createDeploymentModel(clusterGroup *api.ClusterGrou
 		return nil, err
 	}
 	deploymentModel.Values = values
-	deploymentModel.TargetClusters = make([]TargetCluster, 0)
+	deploymentModel.TargetClusters = make([]*TargetCluster, 0)
 	for _, cluster := range clusterGroup.Clusters {
-		targetCluster := TargetCluster{
+		targetCluster := &TargetCluster{
 			ClusterID:   cluster.GetID(),
 			ClusterName: cluster.GetName(),
 		}
@@ -307,7 +311,7 @@ func (m CGDeploymentManager) updateDeploymentModel(clusterGroup *api.ClusterGrou
 	deploymentModel.Description = requestedChart.Metadata.Description
 	deploymentModel.ChartName = requestedChart.Metadata.Name
 
-	//TODO merge request values with persited ones in case reuse = true
+	//TODO merge request values with persisted ones in case reuse = true
 	if cgDeployment.ReUseValues {
 		return nil
 	}
@@ -317,7 +321,7 @@ func (m CGDeploymentManager) updateDeploymentModel(clusterGroup *api.ClusterGrou
 		return err
 	}
 	deploymentModel.Values = values
-	existingTargetsMap := make(map[uint]TargetCluster, 0)
+	existingTargetsMap := make(map[uint]*TargetCluster, 0)
 	for _, target := range deploymentModel.TargetClusters {
 		existingTargetsMap[target.ClusterID] = target
 	}
@@ -325,7 +329,7 @@ func (m CGDeploymentManager) updateDeploymentModel(clusterGroup *api.ClusterGrou
 	for _, cluster := range clusterGroup.Clusters {
 		target, exists := existingTargetsMap[cluster.GetID()]
 		if !exists {
-			target = TargetCluster{
+			target = &TargetCluster{
 				ClusterID:   cluster.GetID(),
 				ClusterName: cluster.GetName(),
 			}
@@ -333,11 +337,11 @@ func (m CGDeploymentManager) updateDeploymentModel(clusterGroup *api.ClusterGrou
 		}
 
 		if valuesOverride, ok := cgDeployment.ValueOverrides[cluster.GetName()]; ok {
-			marshalledValues, err := json.Marshal(valuesOverride)
+			jsonValues, err := json.Marshal(valuesOverride)
 			if err != nil {
 				return err
 			}
-			target.Values = marshalledValues
+			target.Values = jsonValues
 		} else {
 			target.Values = nil
 		}
@@ -419,9 +423,9 @@ func (m CGDeploymentManager) GetDeployment(clusterGroup *api.ClusterGroup, deplo
 }
 
 // returns stale clusters, cluster not members of the cluster group anymore. they may have been already deleted
-func (m CGDeploymentManager) addStaleClusterStatuses(clusters map[uint]api.Cluster, overrides []TargetCluster) []TargetClusterStatus {
+func (m CGDeploymentManager) addStaleClusterStatuses(clusters map[uint]api.Cluster, targets []*TargetCluster) []TargetClusterStatus {
 	staleClusterStatuses := make([]TargetClusterStatus, 0)
-	for _, o := range overrides {
+	for _, o := range targets {
 		if _, exists := clusters[o.ClusterID]; !exists {
 
 			ctx := context.Background()
@@ -480,9 +484,14 @@ func (m CGDeploymentManager) GetAllDeployments(clusterGroup *api.ClusterGroup) (
 	return resultList, nil
 }
 
-func (m CGDeploymentManager) deleteDeploymentFromCluster(clusterId uint, apiCluster api.Cluster, name string) error {
+func (m CGDeploymentManager) deleteDeploymentFromCluster(clusterId uint, apiCluster api.Cluster, releaseName string) error {
+
+	var log *logrus.Entry
 	if apiCluster == nil {
-		m.logger.Warnf("cluster %v is not member of the cluster group anymore", clusterId)
+		log = m.logger.WithFields(logrus.Fields{"releaseName": releaseName, "clusterId": clusterId})
+		log.Warnf("cluster is not member of the cluster group anymore")
+	} else {
+		log = m.logger.WithFields(logrus.Fields{"releaseName": releaseName, "clusterId": apiCluster.GetID(), "clusterName": apiCluster.GetName()})
 	}
 
 	ctx := context.Background()
@@ -494,15 +503,15 @@ func (m CGDeploymentManager) deleteDeploymentFromCluster(clusterId uint, apiClus
 	}
 	apiCluster = cluster
 
-	m.logger.Infof("delete deployment from %s", apiCluster.GetName())
+	log.Info("deleting cluster group deployment from cluster")
 	k8sConfig, err := apiCluster.GetK8sConfig()
 	if err != nil {
 		return err
 	}
 
-	err = helm.DeleteDeployment(name, k8sConfig)
+	err = helm.DeleteDeployment(releaseName, k8sConfig)
 	if err != nil {
-		m.logger.Errorf("DeleteDeployment for '%s' failed due to: %s", name, err.Error())
+		log.Error(emperror.Wrap(err, "failed to delete cluster group deployment from cluster").Error())
 		return err
 	}
 	return nil
@@ -646,6 +655,10 @@ func (m CGDeploymentManager) upgradeOrInstallDeploymentToTargetClusters(clusterG
 }
 
 func (m CGDeploymentManager) CreateDeployment(clusterGroup *api.ClusterGroup, orgName string, cgDeployment *ClusterGroupDeployment) ([]TargetClusterStatus, error) {
+
+	if len(cgDeployment.ReleaseName) == 0 {
+		return nil, errors.Errorf("release name is mandatory")
+	}
 
 	env := helm.GenerateHelmRepoEnv(orgName)
 	requestedChart, err := helm.GetRequestedChart(cgDeployment.ReleaseName, cgDeployment.Name, cgDeployment.Version, cgDeployment.Package, env)

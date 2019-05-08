@@ -39,11 +39,10 @@ func (TargetCluster) TableName() string {
 // ClusterGroupDeploymentModel describes a cluster group deployment
 type ClusterGroupDeploymentModel struct {
 	ID                    uint `gorm:"primary_key"`
-	ClusterGroupID        uint
+	ClusterGroupID        uint `gorm:"unique_index:idx_unique_cid_name"`
 	CreatedAt             time.Time
 	UpdatedAt             *time.Time
-	DeletedAt             *time.Time `gorm:"unique_index:idx_unique_id" sql:"index"`
-	DeploymentName        string
+	DeploymentName        string `gorm:"unique_index:idx_unique_cid_name"`
 	DeploymentVersion     string
 	DeploymentPackage     []byte
 	DeploymentReleaseName string
@@ -51,15 +50,15 @@ type ClusterGroupDeploymentModel struct {
 	ChartName             string
 	Namespace             string
 	OrganizationName      string
-	Values                []byte          `sql:"type:text;"`
-	TargetClusters        []TargetCluster `gorm:"foreignkey:ClusterGroupDeploymentID"`
+	Values                []byte           `sql:"type:text;"`
+	TargetClusters        []*TargetCluster `gorm:"foreignkey:ClusterGroupDeploymentID"`
 }
 
 // TargetCluster describes cluster specific values for a cluster group deployment
 type TargetCluster struct {
 	ID                       uint `gorm:"primary_key"`
-	ClusterGroupDeploymentID uint
-	ClusterID                uint
+	ClusterGroupDeploymentID uint `gorm:"unique_index:idx_unique_dep_cl"`
+	ClusterID                uint `gorm:"unique_index:idx_unique_dep_cl"`
 	ClusterName              string
 	CreatedAt                time.Time
 	UpdatedAt                *time.Time
